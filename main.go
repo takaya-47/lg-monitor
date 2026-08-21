@@ -18,7 +18,7 @@ func main() {
 	client := http.Client{
 		Timeout: 10 * time.Second,
 	}
-	url := "https://github.com/arsaga-partners/jrs-mars-cockpit"
+	url := "https://www.city.uki.kumamoto.jp/"
 
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
