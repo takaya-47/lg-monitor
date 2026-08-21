@@ -29,7 +29,7 @@ func main() {
 			slog.LogAttrs(ctx, slog.LevelInfo, "monitoring stopped", slog.String("reason", ctx.Err().Error()))
 			return
 		case <-ticker.C:
-			err := request(ctx, client, url)
+			err := check(ctx, client, url)
 			if err != nil {
 				slog.LogAttrs(ctx, slog.LevelError, "request failed", slog.String("error", err.Error()))
 			}
@@ -37,7 +37,7 @@ func main() {
 	}
 }
 
-func request(ctx context.Context, client http.Client, url string) error {
+func check(ctx context.Context, client http.Client, url string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return errors.New("error when creating request: " + err.Error())
