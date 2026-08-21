@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -27,25 +28,30 @@ func main() {
 			fmt.Println("Received interrupt signal, bye!")
 			return
 		case <-ticker.C:
-			req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+			err := request(ctx, client, url)
 			if err != nil {
-				fmt.Println("error when creating request: ", err)
-				continue
+				fmt.Println("Error:", err)
 			}
-
-			res, err := client.Do(req)
-			if err != nil {
-				fmt.Println("error when sending request: ", err)
-				continue
-			}
-			defer res.Body.Close()
-
-			if res.StatusCode != http.StatusOK {
-				fmt.Println("error: status code is not OK: ", res.StatusCode)
-				continue
-			}
-
-			fmt.Println("success: status code is OK", res.StatusCode)
 		}
 	}
+}
+
+func request(ctx context.Context, client http.Client, url string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return errors.New("error when creating request: " + err.Error())
+	}
+
+	res, err := client.Do(req)
+	if err != nil {
+		return errors.New("error when sending request: " + err.Error())
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return fmt.Errorf("status code is not OK: %d", res.StatusCode)
+	}
+
+	fmt.Println("success: status code is OK", res.StatusCode)
+	return nil
 }
