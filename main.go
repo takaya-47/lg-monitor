@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,7 +18,7 @@ func main() {
 	client := http.Client{
 		Timeout: 10 * time.Second,
 	}
-	url := "https://www.city.uki.kumamoto.jp/"
+	url := "https://github.com/arsaga-partners/jrs-mars-cockpit"
 
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
@@ -25,12 +26,12 @@ func main() {
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Println("Received interrupt signal, bye!")
+			slog.LogAttrs(ctx, slog.LevelInfo, "monitoring stopped", slog.String("reason", ctx.Err().Error()))
 			return
 		case <-ticker.C:
 			err := request(ctx, client, url)
 			if err != nil {
-				fmt.Println("Error:", err)
+				slog.LogAttrs(ctx, slog.LevelError, "request failed", slog.String("error", err.Error()))
 			}
 		}
 	}
@@ -52,6 +53,6 @@ func request(ctx context.Context, client http.Client, url string) error {
 		return fmt.Errorf("status code is not OK: %d", res.StatusCode)
 	}
 
-	fmt.Println("success: status code is OK", res.StatusCode)
+	slog.LogAttrs(ctx, slog.LevelInfo, "got successful response", slog.Int("status_code", res.StatusCode))
 	return nil
 }
