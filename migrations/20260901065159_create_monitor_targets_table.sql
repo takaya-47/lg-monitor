@@ -1,7 +1,7 @@
 -- +goose Up
 CREATE TABLE monitor_targets (
     id              INT UNSIGNED NOT NULL AUTO_INCREMENT,
-    municipality_id INT UNSIGNED NOT NULL COMMENT '監視対象URLを持つ市区町村',
+    municipality_id INT UNSIGNED NOT NULL,
     url             VARCHAR(255) NOT NULL COMMENT '監視対象URL',
     label           VARCHAR(255) NOT NULL DEFAULT '' COMMENT '同一自治体で複数URLを監視する場合の識別用ラベル',
     is_active       BOOLEAN      NOT NULL DEFAULT TRUE COMMENT '監視対象に含めるか否か',
