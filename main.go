@@ -30,8 +30,7 @@ func main() {
 		"https://www.town.kumamoto-misato.lg.jp/index.orig.html",
 	}
 
-	// TODO: 動作確認用に短めにしているが、本番では15分程度に変更する予定
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(900 * time.Second)
 	defer ticker.Stop()
 
 	for {
