@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"time"
 )
 
@@ -18,9 +19,16 @@ func main() {
 	client := http.Client{
 		Timeout: 10 * time.Second,
 	}
-	url := "https://www.city.uki.kumamoto.jp/"
+	urls := []string{
+		"https://www.city.uki.kumamoto.jp/",
+		"https://www.town.hikawa.kumamoto.jp/",
+		"https://www.city.yatsushiro.lg.jp/default.html",
+		"https://www.city.kumamoto.jp/",
+		"https://www.town.kumamoto-misato.lg.jp/index.html",
+		"https://www.town.kumamoto-misato.lg.jp/index.orig.html",
+	}
 
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
 	for {
@@ -29,10 +37,21 @@ func main() {
 			slog.LogAttrs(ctx, slog.LevelInfo, "monitoring stopped", slog.String("reason", ctx.Err().Error()))
 			return
 		case <-ticker.C:
-			err := check(ctx, client, url)
-			if err != nil {
-				slog.LogAttrs(ctx, slog.LevelError, "request failed", slog.String("error", err.Error()))
+			var wg sync.WaitGroup
+			wg.Add(len(urls))
+
+			for _, url := range urls {
+				go func(url string) {
+					defer wg.Done()
+
+					err := check(ctx, client, url)
+					if err != nil {
+						slog.LogAttrs(ctx, slog.LevelError, "request failed", slog.String("url", url), slog.String("error", err.Error()))
+					}
+				}(url)
 			}
+
+			wg.Wait()
 		}
 	}
 }
@@ -53,6 +72,6 @@ func check(ctx context.Context, client http.Client, url string) error {
 		return fmt.Errorf("status code is not OK: %d", res.StatusCode)
 	}
 
-	slog.LogAttrs(ctx, slog.LevelInfo, "got successful response", slog.Int("status_code", res.StatusCode))
+	slog.LogAttrs(ctx, slog.LevelInfo, "got successful response", slog.String("url", url), slog.Int("status_code", res.StatusCode))
 	return nil
 }
