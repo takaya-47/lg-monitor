@@ -46,6 +46,13 @@ func main() {
 
 					err := check(ctx, client, url)
 					if err != nil {
+						// エラーがキャンセルの場合はリクエスト自体はキャンセルされているが、正常終了として扱う
+						if errors.Is(err, context.Canceled) {
+							slog.LogAttrs(ctx, slog.LevelInfo, "request canceled", slog.String("url", url))
+							return
+						}
+
+						// キャンセル以外のエラーは異常終了
 						slog.LogAttrs(ctx, slog.LevelError, "request failed", slog.String("url", url), slog.String("error", err.Error()))
 					}
 				}(url)
@@ -59,12 +66,12 @@ func main() {
 func check(ctx context.Context, client http.Client, url string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return errors.New("error when creating request: " + err.Error())
+		return fmt.Errorf("error when creating request: %w", err)
 	}
 
 	res, err := client.Do(req)
 	if err != nil {
-		return errors.New("error when sending request: " + err.Error())
+		return fmt.Errorf("error when sending request: %w", err)
 	}
 	defer res.Body.Close()
 
