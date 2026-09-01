@@ -1,7 +1,7 @@
 services:
   app:
     build:
-      context: .
+      context: .docker/go
     volumes:
       # ソースコードをバインドマウント
       - .:/app
