@@ -1,0 +1,15 @@
+services:
+  app:
+    build:
+      context: .
+    volumes:
+      # ソースコードをバインドマウント
+      - .:/app
+      # モジュール/ビルドキャッシュは名前付きボリュームで管理し、コンテナ起動を高速化する
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    tty: true
+
+volumes:
+  go-mod-cache:
+  go-build-cache:
