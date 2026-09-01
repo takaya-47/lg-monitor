@@ -9,7 +9,23 @@ services:
       - go-mod-cache:/go/pkg/mod
       - go-build-cache:/root/.cache/go-build
     tty: true
+    depends_on:
+      - mysql
+  mysql:
+    image: mysql:8.4
+    ports:
+      # ローカルマシンからクライアントツールで接続したいので3306番ポートを公開し、コンテナの3306番ポートとマッピングする
+      - "3306:3306"
+    volumes:
+    # 設定ファイルのバインドマウント
+      - "./.docker/mysql/my.cnf:/etc/mysql/conf.d/my.cnf"
+    # データ永続化用のボリューム
+      - mysql-data:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: lg_monitor
 
 volumes:
   go-mod-cache:
   go-build-cache:
+  mysql-data:
