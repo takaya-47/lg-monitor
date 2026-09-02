@@ -11,28 +11,30 @@ services:
     tty: true
     environment:
       GOOSE_DRIVER: mysql
+      # goose用DSN
       # ユーザー名:パスワード@tcp(ホスト:ポート)/データベース名?parseTime=true
-      GOOSE_DBSTRING: "root:root@tcp(mysql:3306)/lg_monitor?parseTime=true"
+      GOOSE_DBSTRING: "${DB_ROOT_USER}:${DB_ROOT_PASSWORD}@tcp(${DB_HOST}:${DB_PORT})/${DB_NAME}?parseTime=true"
       GOOSE_MIGRATION_DIR: migrations
+      # アプリケーション用DSN（gooseとは別に管理）
+      DB_DSN: "${DB_ROOT_USER}:${DB_ROOT_PASSWORD}@tcp(${DB_HOST}:${DB_PORT})/${DB_NAME}?parseTime=true"
     depends_on:
       mysql:
-        # MySQLが接続を受け付ける状態になるまで待つ
         condition: service_healthy
   mysql:
     image: mysql:8.4
     ports:
-      # ローカルマシンからクライアントツールで接続したいので3306番ポートを公開し、コンテナの3306番ポートとマッピングする
-      - "3306:3306"
+      # ローカルマシンからクライアントツールで接続したいのでポートを公開する。
+      - "127.0.0.1:${DB_PORT_HOST}:3306"
     volumes:
     # 設定ファイルのバインドマウント
       - "./.docker/mysql/my.cnf:/etc/mysql/conf.d/my.cnf"
     # データ永続化用のボリューム
       - mysql-data:/var/lib/mysql
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: lg_monitor
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-p${DB_ROOT_PASSWORD}"]
       interval: 5s
       timeout: 5s
       retries: 20
