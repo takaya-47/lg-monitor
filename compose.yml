@@ -10,8 +10,8 @@ services:
       - go-build-cache:/root/.cache/go-build
     tty: true
     environment:
-      # gooseのCLIが参照する環境変数
       GOOSE_DRIVER: mysql
+      # ユーザー名:パスワード@tcp(ホスト:ポート)/データベース名?parseTime=true
       GOOSE_DBSTRING: "root:root@tcp(mysql:3306)/lg_monitor?parseTime=true"
       GOOSE_MIGRATION_DIR: migrations
     depends_on:
