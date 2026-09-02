@@ -30,6 +30,7 @@ func main() {
 		"https://www.town.kumamoto-misato.lg.jp/index.orig.html",
 	}
 
+	// 15分ごとに監視を実行
 	ticker := time.NewTicker(900 * time.Second)
 	defer ticker.Stop()
 
