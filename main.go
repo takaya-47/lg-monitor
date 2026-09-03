@@ -35,7 +35,7 @@ func run() error {
 	}
 	defer db.Close()
 
-	err = monitor(ctx)
+	err = monitor(ctx, db)
 	if err != nil {
 		return err
 	}
@@ -62,21 +62,9 @@ func connectDB(ctx context.Context) (*sql.DB, error) {
 	return db, nil
 }
 
-func monitor(ctx context.Context) error {
+func monitor(ctx context.Context, db *sql.DB) error {
 	client := http.Client{
 		Timeout: 10 * time.Second,
-	}
-
-	// TODO: 監視結果をDBに保存する
-	// まず、リクエスト先のURLをDBから取得する
-	// 監視結果をmonitor_resultsテーブルに保存する
-	urls := []string{
-		"https://www.city.uki.kumamoto.jp/",
-		"https://www.town.hikawa.kumamoto.jp/",
-		"https://www.city.yatsushiro.lg.jp/default.html",
-		"https://www.city.kumamoto.jp/",
-		"https://www.town.kumamoto-misato.lg.jp/index.html",
-		"https://www.town.kumamoto-misato.lg.jp/index.orig.html",
 	}
 
 	// 15分ごとに監視を実行
@@ -89,30 +77,47 @@ func monitor(ctx context.Context) error {
 			slog.LogAttrs(ctx, slog.LevelInfo, "monitoring stopped", slog.String("reason", ctx.Err().Error()))
 			return nil
 		case <-ticker.C:
-			var wg sync.WaitGroup
-			wg.Add(len(urls))
-
-			for _, url := range urls {
-				go func(url string) {
-					defer wg.Done()
-
-					err := check(ctx, &client, url)
-					if err != nil {
-						// エラーがキャンセルの場合はリクエスト自体はキャンセルされているが、正常終了として扱う
-						if errors.Is(err, context.Canceled) {
-							slog.LogAttrs(ctx, slog.LevelInfo, "request canceled", slog.String("url", url))
-							return
-						}
-
-						// キャンセル以外のエラーは異常終了
-						slog.LogAttrs(ctx, slog.LevelError, "request failed", slog.String("url", url), slog.String("error", err.Error()))
-					}
-				}(url)
-			}
-
-			wg.Wait()
+			checkTargets(ctx, &client, db)
 		}
 	}
+}
+
+// checkTargetsは1回分の監視を実行する。
+func checkTargets(ctx context.Context, client *http.Client, db *sql.DB) {
+	// TODO: 監視結果をDBに保存する
+	// まず、リクエスト先のURLをDBから取得する
+	// 監視結果をmonitor_resultsテーブルに保存する
+	urls := []string{
+		"https://www.city.uki.kumamoto.jp/",
+		"https://www.town.hikawa.kumamoto.jp/",
+		"https://www.city.yatsushiro.lg.jp/default.html",
+		"https://www.city.kumamoto.jp/",
+		"https://www.town.kumamoto-misato.lg.jp/index.html",
+		"https://www.town.kumamoto-misato.lg.jp/index.orig.html",
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(len(urls))
+
+	for _, url := range urls {
+		go func(url string) {
+			defer wg.Done()
+
+			err := check(ctx, client, url)
+			if err != nil {
+				// エラーがキャンセルの場合はリクエスト自体はキャンセルされているが、正常終了としてログに残す
+				if errors.Is(err, context.Canceled) {
+					slog.LogAttrs(ctx, slog.LevelInfo, "request canceled", slog.String("url", url))
+					return
+				}
+
+				// キャンセル以外のエラーは異常終了としてログに残す
+				slog.LogAttrs(ctx, slog.LevelError, "request failed", slog.String("url", url), slog.String("error", err.Error()))
+			}
+		}(url)
+	}
+
+	wg.Wait()
 }
 
 func check(ctx context.Context, client *http.Client, url string) error {
