@@ -63,6 +63,8 @@ func connectDB(ctx context.Context) (*sql.DB, error) {
 
 // monitorは指定された間隔で監視を実行します。
 func monitor(ctx context.Context, db *sql.DB) error {
+	slog.LogAttrs(ctx, slog.LevelInfo, "monitoring started", slog.String("interval_minutes", os.Getenv("MONITOR_INTERVAL_MINUTES")))
+
 	client := http.Client{
 		Timeout: 10 * time.Second,
 	}
