@@ -23,7 +23,7 @@ func main() {
 	}
 }
 
-// run はアプリケーションを開始する
+// run はアプリケーションを開始します。
 func run() error {
 	// 手動でCtrl+Cまたはコンテナ終了（SIGTERM）のシグナルが送られた場合にコンテキストをキャンセルする
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -42,7 +42,7 @@ func run() error {
 	return nil
 }
 
-// connectDBはMySQLへの疎通を確認し、接続可能な場合はコネクションプールを返す
+// connectDBはMySQLへの疎通を確認し、接続可能な場合はコネクションプールを返します。
 func connectDB(ctx context.Context) (*sql.DB, error) {
 	// DSNの検証
 	db, err := sql.Open("mysql", os.Getenv("DB_DSN"))
@@ -62,6 +62,7 @@ func connectDB(ctx context.Context) (*sql.DB, error) {
 	return db, nil
 }
 
+// monitorは指定された間隔で監視を実行します。
 func monitor(ctx context.Context, db *sql.DB) error {
 	client := http.Client{
 		Timeout: 10 * time.Second,
