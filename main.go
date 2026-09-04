@@ -69,7 +69,6 @@ func monitor(ctx context.Context, db *sql.DB) error {
 		Timeout: 10 * time.Second,
 	}
 
-	// 15分ごとに監視を実行
 	intervalMinutes, err := strconv.Atoi(os.Getenv("MONITOR_INTERVAL_MINUTES"))
 	if err != nil {
 		return fmt.Errorf("invalid env value: MONITOR_INTERVAL_MINUTES: %w", err)
