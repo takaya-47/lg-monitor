@@ -3,14 +3,12 @@ package main
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
-	"sync"
 	"syscall"
 	"time"
 
@@ -95,28 +93,24 @@ func checkTargets(ctx context.Context, client *http.Client, db *sql.DB) {
 		return
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(len(targets))
-
+	// 監視対象1件の結果を格納するバッファ付きチャネル。
+	// バッファ付きチャネルを作成することで、複数のゴルーチンが結果を送信する際にブロックされるのを防げる。
+	// ここでfan-outしている
+	ch := make(chan monitorResult, len(targets))
 	for _, target := range targets {
 		go func(target monitorTarget) {
-			defer wg.Done()
-
-			err := check(ctx, client, target.url)
-			if err != nil {
-				// エラーがキャンセルの場合はリクエスト自体はキャンセルされているが、正常終了としてログに残す
-				if errors.Is(err, context.Canceled) {
-					slog.LogAttrs(ctx, slog.LevelInfo, "request canceled", slog.String("url", target.url))
-					return
-				}
-
-				// キャンセル以外のエラーは異常終了としてログに残す
-				slog.LogAttrs(ctx, slog.LevelError, "request failed", slog.String("url", target.url), slog.String("error", err.Error()))
-			}
+			ch <- check(ctx, client, target)
 		}(target)
 	}
 
-	wg.Wait()
+	// 長さ0、容量が監視対象数となるスライス（メモリの追加割り当てによるパフォーマンス劣化を防止）
+	results := make([]monitorResult, 0, len(targets))
+	// ここでfan-inして結果を集約
+	for i := 0; i < len(targets); i++ {
+		results = append(results, <-ch)
+	}
+
+	// TODO: 集約した結果をDBに保存する処理を実装する。
 }
 
 type monitorTarget struct {
@@ -155,23 +149,43 @@ func fetchMonitorTargets(ctx context.Context, db *sql.DB) ([]monitorTarget, erro
 	return targets, nil
 }
 
-// checkは監視対象にHTTPリクエストを送信します。
-func check(ctx context.Context, client *http.Client, url string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+type monitorResult struct {
+	monitorTargetID int
+	checkedAt       time.Time
+	isSuccess       bool
+	statusCode      sql.Null[int]
+	responseTimeMs  sql.Null[int]
+	errorMessage    string
+}
+
+// checkは監視対象にHTTPリクエストを送信し、結果を返却します
+func check(ctx context.Context, client *http.Client, target monitorTarget) monitorResult {
+	result := monitorResult{
+		monitorTargetID: target.id,
+		checkedAt:       time.Now(),
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.url, nil)
 	if err != nil {
-		return fmt.Errorf("error when creating request: %w", err)
+		result.errorMessage = fmt.Errorf("error when creating request: %v", err).Error()
+		return result
 	}
 
 	res, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("error when sending request: %w", err)
+		result.errorMessage = fmt.Errorf("error when sending request: %v", err).Error()
+		return result
 	}
 	defer res.Body.Close()
 
+	result.statusCode = sql.Null[int]{V: res.StatusCode, Valid: true}
+	result.responseTimeMs = sql.Null[int]{V: int(time.Since(result.checkedAt).Milliseconds()), Valid: true}
+
 	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("status code is not OK: %d", res.StatusCode)
+		result.errorMessage = fmt.Errorf("status code is not 2xx: %v", res.Status).Error()
+		return result
 	}
 
-	slog.LogAttrs(ctx, slog.LevelInfo, "got successful response", slog.String("url", url), slog.Int("status_code", res.StatusCode))
-	return nil
+	result.isSuccess = true
+	return result
 }
