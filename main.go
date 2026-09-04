@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -69,7 +70,11 @@ func monitor(ctx context.Context, db *sql.DB) error {
 	}
 
 	// 15分ごとに監視を実行
-	ticker := time.NewTicker(900 * time.Second)
+	intervalMinutes, err := strconv.Atoi(os.Getenv("MONITOR_INTERVAL_MINUTES"))
+	if err != nil {
+		return fmt.Errorf("invalid env value: MONITOR_INTERVAL_MINUTES: %w", err)
+	}
+	ticker := time.NewTicker(time.Duration(intervalMinutes) * time.Minute)
 	defer ticker.Stop()
 
 	for {
