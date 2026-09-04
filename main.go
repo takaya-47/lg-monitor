@@ -82,44 +82,75 @@ func monitor(ctx context.Context, db *sql.DB) error {
 	}
 }
 
-// checkTargetsは1回分の監視を実行する。
+// checkTargetsは1回分の監視を実行します。
 func checkTargets(ctx context.Context, client *http.Client, db *sql.DB) {
-	// TODO: 監視結果をDBに保存する
-	// まず、リクエスト先のURLをDBから取得する
-	// 監視結果をmonitor_resultsテーブルに保存する
-	urls := []string{
-		"https://www.city.uki.kumamoto.jp/",
-		"https://www.town.hikawa.kumamoto.jp/",
-		"https://www.city.yatsushiro.lg.jp/default.html",
-		"https://www.city.kumamoto.jp/",
-		"https://www.town.kumamoto-misato.lg.jp/index.html",
-		"https://www.town.kumamoto-misato.lg.jp/index.orig.html",
+	targets, err := fetchMonitorTargets(ctx, db)
+	if err != nil {
+		slog.LogAttrs(ctx, slog.LevelError, "cannot fetch monitor targets, skipping this cycle", slog.String("error", err.Error()))
+		return
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(len(urls))
+	wg.Add(len(targets))
 
-	for _, url := range urls {
-		go func(url string) {
+	for _, target := range targets {
+		go func(target monitorTarget) {
 			defer wg.Done()
 
-			err := check(ctx, client, url)
+			err := check(ctx, client, target.url)
 			if err != nil {
 				// エラーがキャンセルの場合はリクエスト自体はキャンセルされているが、正常終了としてログに残す
 				if errors.Is(err, context.Canceled) {
-					slog.LogAttrs(ctx, slog.LevelInfo, "request canceled", slog.String("url", url))
+					slog.LogAttrs(ctx, slog.LevelInfo, "request canceled", slog.String("url", target.url))
 					return
 				}
 
 				// キャンセル以外のエラーは異常終了としてログに残す
-				slog.LogAttrs(ctx, slog.LevelError, "request failed", slog.String("url", url), slog.String("error", err.Error()))
+				slog.LogAttrs(ctx, slog.LevelError, "request failed", slog.String("url", target.url), slog.String("error", err.Error()))
 			}
-		}(url)
+		}(target)
 	}
 
 	wg.Wait()
 }
 
+type monitorTarget struct {
+	id  int
+	url string
+}
+
+// fetchMonitorTargetsは監視対象のURLを取得します。
+func fetchMonitorTargets(ctx context.Context, db *sql.DB) ([]monitorTarget, error) {
+	const query string = `
+		SELECT id, url
+	      FROM monitor_targets
+		 WHERE is_active = 1
+	`
+	rows, err := db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("error when fetching monitor targets: %w", err)
+	}
+	defer rows.Close()
+
+	var targets []monitorTarget
+	for rows.Next() {
+		var target monitorTarget
+		err := rows.Scan(&target.id, &target.url)
+		if err != nil {
+			return nil, fmt.Errorf("error when scanning record: %w", err)
+		}
+		targets = append(targets, target)
+	}
+
+	// forループで行読み取り中に発生したエラーが存在すれば、ここでチェックする。
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error when iterating rows: %w", err)
+	}
+
+	return targets, nil
+}
+
+// checkは監視対象にHTTPリクエストを送信します。
 func check(ctx context.Context, client *http.Client, url string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
