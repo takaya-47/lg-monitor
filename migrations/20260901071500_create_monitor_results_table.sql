@@ -6,7 +6,7 @@ CREATE TABLE monitor_results (
     is_success        BOOLEAN           NOT NULL COMMENT '監視上の成功／失敗の判定結果',
     status_code       SMALLINT UNSIGNED NULL     COMMENT 'HTTPステータスコード。レスポンスを受け取れなかった場合はNULL。',
     response_time_ms  INT UNSIGNED      NULL     COMMENT 'リクエスト開始からレスポンス受領までのミリ秒。レスポンスを受け取れなかった場合はNULL。',
-    error_message     VARCHAR(512)      NULL     COMMENT 'エラーの詳細。成功時はNULL。',
+    error_message     VARCHAR(512)      NOT NULL COMMENT 'エラーの詳細。',
     created_at        DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at        DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
