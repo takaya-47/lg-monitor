@@ -97,8 +97,8 @@ func checkTargets(ctx context.Context, client *http.Client, db *sql.DB) {
 
 	// 監視対象1件の結果を格納するバッファ付きチャネル。
 	// バッファ付きチャネルを作成することで、複数のゴルーチンが結果を送信する際にブロックされるのを防げる。
-	// ここでfan-outしている
 	ch := make(chan monitorResult, len(targets))
+	// ここでfan-outして各監視対象に対して並行処理でHTTPリクエストを送信
 	for _, target := range targets {
 		go func(target monitorTarget) {
 			ch <- check(ctx, client, target)
@@ -107,7 +107,7 @@ func checkTargets(ctx context.Context, client *http.Client, db *sql.DB) {
 
 	// 長さ0、容量が監視対象数となるスライス（メモリの追加割り当てによるパフォーマンス劣化を防止）
 	results := make([]monitorResult, 0, len(targets))
-	// ここでfan-inして結果を集約
+	// ここでfan-inしてリクエスト結果を集約
 	for i := 0; i < len(targets); i++ {
 		results = append(results, <-ch)
 	}
