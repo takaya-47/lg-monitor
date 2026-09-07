@@ -1,5 +1,5 @@
 services:
-  app:
+  monitor:
     build:
       context: .docker/go
     volumes:

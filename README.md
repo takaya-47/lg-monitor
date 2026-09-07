@@ -17,7 +17,7 @@ docker compose up -d
 
 ### 3. マイグレーションの実行
 ```bash
-docker compose exec app goose up
+docker compose exec monitor goose up
 ```
 
 ### 4. マスタデータの投入
