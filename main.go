@@ -84,6 +84,7 @@ func monitor(ctx context.Context, db *sql.DB) error {
 			return nil
 		case <-ticker.C:
 			checkTargets(ctx, &client, db)
+			slog.LogAttrs(ctx, slog.LevelInfo, "monitoring was completed")
 		}
 	}
 }
