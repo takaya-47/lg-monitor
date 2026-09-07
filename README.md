@@ -9,10 +9,11 @@
 cp .env.example .env
 ```
 
-### 2. コンテナの起動
+### 2. コンテナの起動（監視の開始）
 ```bash
 docker compose up -d
 ```
+監視間隔は環境変数`MONITOR_INTERVAL_MINUTES`で設定可能です。
 
 ### 3. マイグレーションの実行
 ```bash
