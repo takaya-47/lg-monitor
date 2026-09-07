@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -95,6 +96,11 @@ func checkTargets(ctx context.Context, client *http.Client, db *sql.DB) {
 		return
 	}
 
+	if len(targets) == 0 {
+		slog.LogAttrs(ctx, slog.LevelInfo, "nothing to monitor, skipping this cycle")
+		return
+	}
+
 	// 監視対象1件の結果を格納するバッファ付きチャネル。
 	// バッファ付きチャネルを作成することで、複数のゴルーチンが結果を送信する際にブロックされるのを防げる。
 	ch := make(chan monitorResult, len(targets))
@@ -112,7 +118,11 @@ func checkTargets(ctx context.Context, client *http.Client, db *sql.DB) {
 		results = append(results, <-ch)
 	}
 
-	// TODO: 集約した結果をDBに保存する処理を実装する。
+	err = saveMonitorResults(ctx, db, results)
+	if err != nil {
+		slog.LogAttrs(ctx, slog.LevelError, "cannot save monitor results, skipping this cycle", slog.String("error", err.Error()))
+		return
+	}
 }
 
 type monitorTarget struct {
@@ -190,4 +200,30 @@ func check(ctx context.Context, client *http.Client, target monitorTarget) monit
 
 	result.isSuccess = true
 	return result
+}
+
+// saveMonitorResultsは監視結果をDBに保存します。
+func saveMonitorResults(ctx context.Context, db *sql.DB, results []monitorResult) error {
+	if len(results) == 0 {
+		return nil
+	}
+
+	columns := 6
+	placeholders := make([]string, 0, len(results))
+	values := make([]any, 0, len(results)*columns)
+	for _, r := range results {
+		placeholders = append(placeholders, "(?, ?, ?, ?, ?, ?)")
+		values = append(values, r.monitorTargetID, r.checkedAt, r.isSuccess, r.statusCode, r.responseTimeMs, r.errorMessage)
+	}
+	query := fmt.Sprintf(
+		"INSERT INTO monitor_results (monitor_target_id, checked_at, is_success, status_code, response_time_ms, error_message) VALUES %s",
+		strings.Join(placeholders, ","),
+	)
+
+	_, err := db.ExecContext(ctx, query, values...)
+	if err != nil {
+		return fmt.Errorf("error when executing insert: %w", err)
+	}
+
+	return nil
 }
