@@ -89,15 +89,27 @@ func monitor(ctx context.Context, db *sql.DB) error {
 		WriteTimeout: 0,
 		IdleTimeout:  0,
 	}
-	err = s.ListenAndServe()
-	if err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return fmt.Errorf("failed to start sse server: %w", err)
-	}
+	// ListenAndServeはサーバー停止まで返らないため、別ゴルーチンで起動して監視ループに進めるようにする
+	serverErr := make(chan error, 1)
+	go func() {
+		err := s.ListenAndServe()
+		// ErrServerClosedはこちらのShutdown由来なので異常ではない
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serverErr <- fmt.Errorf("failed to start sse server: %w", err)
+		}
+	}()
 
 	for {
 		select {
+		case err := <-serverErr:
+			// SSEサーバーの起動に失敗した場合
+			return err
 		case <-ctx.Done():
+			// アプリケーションがシグナルにより終了する場合
 			slog.LogAttrs(ctx, slog.LevelInfo, "monitoring stopped", slog.String("reason", ctx.Err().Error()))
+			// TODO: グレースフルシャットダウン
+			_ = s.Shutdown(context.Background())
+
 			return nil
 		case <-ticker.C:
 			checkTargets(ctx, &client, db, hub)

@@ -22,7 +22,8 @@ func (h *Hub) Subscribe() chan string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	ch := make(chan string)
+	// バッファ付きチャネルにしておくことでブロックを防止
+	ch := make(chan string, 1)
 	h.clients[ch] = true
 	return ch
 }
@@ -56,6 +57,7 @@ func (h *Hub) NewSSEHandler() http.Handler {
 		}
 
 		ch := h.Subscribe()
+		defer h.UnSubscribe(ch)
 
 		fmt.Fprint(w, "data: connected to sse server\n\n")
 		flusher.Flush()
@@ -64,7 +66,6 @@ func (h *Hub) NewSSEHandler() http.Handler {
 			select {
 			case <-r.Context().Done():
 				// クライアントが接続を切った場合
-				h.UnSubscribe(ch)
 				return
 			case msg := <-ch:
 				fmt.Fprintf(w, "data: %s\n\n", msg)
