@@ -8,7 +8,8 @@ services:
       # モジュール/ビルドキャッシュは名前付きボリュームで管理し、コンテナ起動を高速化する
       - go-mod-cache:/go/pkg/mod
       - go-build-cache:/root/.cache/go-build
-    tty: true
+    ports:
+      - "${SERVER_PORT}:8080"
     environment:
       GOOSE_DRIVER: mysql
       # goose用DSN

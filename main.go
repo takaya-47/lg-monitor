@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/takaya-47/lg-monitor/sse"
 )
 
 func main() {
@@ -77,20 +79,35 @@ func monitor(ctx context.Context, db *sql.DB) error {
 	ticker := time.NewTicker(time.Duration(intervalMinutes) * time.Minute)
 	defer ticker.Stop()
 
+	hub := sse.NewHub()
+	s := http.Server{
+		Addr:              ":" + os.Getenv("SERVER_PORT"),
+		Handler:           hub.NewSSEHandler(),
+		ReadHeaderTimeout: 30 * time.Second,
+		// 以下、SSEでの通信中に接続が切られないようにするため0に設定
+		ReadTimeout:  0,
+		WriteTimeout: 0,
+		IdleTimeout:  0,
+	}
+	err = s.ListenAndServe()
+	if err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("failed to start sse server: %w", err)
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
 			slog.LogAttrs(ctx, slog.LevelInfo, "monitoring stopped", slog.String("reason", ctx.Err().Error()))
 			return nil
 		case <-ticker.C:
-			checkTargets(ctx, &client, db)
+			checkTargets(ctx, &client, db, hub)
 			slog.LogAttrs(ctx, slog.LevelInfo, "monitoring was completed")
 		}
 	}
 }
 
 // checkTargetsは1回分の監視を実行します。
-func checkTargets(ctx context.Context, client *http.Client, db *sql.DB) {
+func checkTargets(ctx context.Context, client *http.Client, db *sql.DB, hub *sse.Hub) {
 	targets, err := fetchMonitorTargets(ctx, db)
 	if err != nil {
 		slog.LogAttrs(ctx, slog.LevelError, "cannot fetch monitor targets, skipping this cycle", slog.String("error", err.Error()))
@@ -124,6 +141,8 @@ func checkTargets(ctx context.Context, client *http.Client, db *sql.DB) {
 		slog.LogAttrs(ctx, slog.LevelError, "cannot save monitor results, skipping this cycle", slog.String("error", err.Error()))
 		return
 	}
+
+	hub.Publish("monitor result is updated!!")
 }
 
 type monitorTarget struct {
