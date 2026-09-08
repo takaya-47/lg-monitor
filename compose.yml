@@ -18,7 +18,6 @@ services:
       # アプリケーション用DSN（gooseとは別に管理）
       DB_DSN: "${DB_ROOT_USER}:${DB_ROOT_PASSWORD}@tcp(${DB_HOST}:${DB_PORT})/${DB_NAME}?parseTime=true"
       MONITOR_INTERVAL_MINUTES: "${MONITOR_INTERVAL_MINUTES}"
-    command: ["sh", "-c", "go build -o /tmp/monitor ./cmd/monitor && /tmp/monitor"]
     depends_on:
       mysql:
         condition: service_healthy
