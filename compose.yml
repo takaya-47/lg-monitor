@@ -1,14 +1,13 @@
 services:
   monitor:
     build:
-      context: .docker/go
+      context: .docker/go/monitor
     volumes:
       # ソースコードをバインドマウント
       - .:/app
       # モジュール/ビルドキャッシュは名前付きボリュームで管理し、コンテナ起動を高速化する
-      - go-mod-cache:/go/pkg/mod
-      - go-build-cache:/root/.cache/go-build
-    tty: true
+      - go-mod-cache-monitor:/go/pkg/mod
+      - go-build-cache-monitor:/root/.cache/go-build
     environment:
       GOOSE_DRIVER: mysql
       # goose用DSN
@@ -22,11 +21,29 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+  web:
+    build:
+      context: .docker/go/web
+    ports:
+      - "8080:8080"
+    volumes:
+      # ソースコードをバインドマウント
+      - .:/app
+      # モジュール/ビルドキャッシュは名前付きボリュームで管理し、コンテナ起動を高速化する
+      - go-mod-cache-web:/go/pkg/mod
+      - go-build-cache-web:/root/.cache/go-build
+    environment:
+      # アプリケーション用DSN（gooseとは別に管理）
+      DB_DSN: "${DB_ROOT_USER}:${DB_ROOT_PASSWORD}@tcp(${DB_HOST}:${DB_PORT})/${DB_NAME}?parseTime=true"
+    command: ["sh", "-c", "go build -o /tmp/web ./cmd/web && /tmp/web"]
+    depends_on:
+      mysql:
+        condition: service_healthy
   mysql:
     image: mysql:8.4
     ports:
       # ローカルマシンからクライアントツールで接続したいのでポートを公開する。
-      - "127.0.0.1:${DB_PORT_HOST}:3306"
+      - "3306:3306"
     volumes:
     # 設定ファイルのバインドマウント
       - "./.docker/mysql/my.cnf:/etc/mysql/conf.d/my.cnf"
@@ -44,6 +61,8 @@ services:
       start_period: 60s
 
 volumes:
-  go-mod-cache:
-  go-build-cache:
+  go-mod-cache-monitor:
+  go-build-cache-monitor:
+  go-mod-cache-web:
+  go-build-cache-web:
   mysql-data:
