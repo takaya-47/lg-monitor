@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 )
 
@@ -75,7 +76,8 @@ func (h *Hub) NewSSEHandler() http.Handler {
 				// クライアントが接続を切った場合
 				return
 			case msg := <-ch:
-				fmt.Fprintf(w, "data: %s", msg)
+				// TODO: id, eventもSSEデータに追加したい...
+				fmt.Fprintf(w, "data: %s\n\n", strings.TrimSpace(msg))
 				flusher.Flush()
 			}
 		}
