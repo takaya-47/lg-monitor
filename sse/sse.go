@@ -67,8 +67,8 @@ func (h *Hub) NewSSEHandler() http.Handler {
 		ch := h.Subscribe()
 		defer h.UnSubscribe(ch)
 
-		fmt.Fprint(w, "data: connected to sse server\n\n")
-		flusher.Flush()
+		// fmt.Fprint(w, "data: connected to sse server\n\n")
+		// flusher.Flush()
 
 		for {
 			select {
@@ -76,7 +76,8 @@ func (h *Hub) NewSSEHandler() http.Handler {
 				// クライアントが接続を切った場合
 				return
 			case msg := <-ch:
-				// TODO: id, eventもSSEデータに追加したい...
+				// TODO: eventもSSEデータに追加して、70~71行目のコメントアウトを解除してもクライアント側で
+				// エラーにならないようにしたい
 				fmt.Fprintf(w, "data: %s\n\n", strings.TrimSpace(msg))
 				flusher.Flush()
 			}

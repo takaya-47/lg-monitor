@@ -82,9 +82,15 @@ func monitor(ctx context.Context, db *sql.DB) error {
 	defer ticker.Stop()
 
 	hub := sse.NewHub()
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		// ルートHTMLを返すのみ
+		http.ServeFile(w, r, "./index.html")
+	})
+	mux.Handle("GET /sse", hub.NewSSEHandler())
 	s := http.Server{
 		Addr:              ":" + os.Getenv("SERVER_PORT"),
-		Handler:           hub.NewSSEHandler(),
+		Handler:           mux,
 		ReadHeaderTimeout: 30 * time.Second,
 		// 以下、SSEでの通信中に接続が切られないようにするため0に設定
 		ReadTimeout:  0,
@@ -277,9 +283,9 @@ type monitorResultPayload struct {
 	MonitorTargetID int       `json:"monitor_target_id"`
 	CheckedAt       time.Time `json:"checked_at"`
 	IsSuccess       bool      `json:"is_success"`
-	StatusCode      *int      `json:"status_code,omitempty"`      // nullableカラムのため構造体のフィールドをポインタ型にしてnilを許容
-	ResponseTimeMs  *int      `json:"response_time_ms,omitempty"` // nullableカラムのため構造体のフィールドをポインタ型にしてnilを許容
-	ErrorMessage    string    `json:"error_message,omitempty"`
+	StatusCode      *int      `json:"status_code"`      // nullableカラムのため構造体のフィールドをポインタ型にしてnilを許容
+	ResponseTimeMs  *int      `json:"response_time_ms"` // nullableカラムのため構造体のフィールドをポインタ型にしてnilを許容
+	ErrorMessage    string    `json:"error_message"`
 }
 
 func newMonitorResultPayload(result monitorResult) monitorResultPayload {

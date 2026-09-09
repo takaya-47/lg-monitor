@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>監視状況</title>
+</head>
+<body>
+    <h1>監視状況</h1>
+
+    <!-- SSEの接続状態を表示する -->
+    <p id="status">未接続</p>
+
+    <table>
+        <thead>
+            <tr>
+                <th>監視対象ID</th>
+                <th>監視日時</th>
+                <th>監視結果</th>
+                <th>HTTPステータスコード</th>
+                <th>応答時間(ms)</th>
+                <th>エラー内容</th>
+            </tr>
+        </thead>
+        <!-- ここに監視結果の行を追加していく -->
+        <tbody id="results"></tbody>
+    </table>
+</body>
+</html>
+<script>
+    const statusEl = document.getElementById('status');
+    const resultsEl = document.getElementById('results');
+
+    const eventSource = new EventSource('/sse');
+
+    eventSource.onopen = () => {
+        statusEl.textContent = '接続中';
+    };
+
+    eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${data.monitor_target_id}</td>
+            <td>${data.checked_at}</td>
+            <td>${data.is_success}</td>
+            <td>${data.status_code}</td>
+            <td>${data.response_time_ms}</td>
+            <td>${data.error_message}</td>
+        `;
+        resultsEl.appendChild(row);
+    };
+
+    eventSource.onerror = () => {
+        statusEl.textContent = '接続失敗';
+    };
+</script>
