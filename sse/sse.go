@@ -1,7 +1,9 @@
 package sse
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"sync"
 )
@@ -23,7 +25,7 @@ func (h *Hub) Subscribe() chan string {
 	defer h.mu.Unlock()
 
 	// バッファ付きチャネルにしておくことでブロックを防止
-	ch := make(chan string, 1)
+	ch := make(chan string, 200)
 	h.clients[ch] = true
 	return ch
 }
@@ -40,7 +42,12 @@ func (h *Hub) Publish(msg string) {
 	defer h.mu.Unlock()
 
 	for ch := range h.clients {
-		ch <- msg
+		select {
+		case ch <- msg:
+		default:
+			// クライアントがまだデータを受け取っていない場合、そのクライアントへのメッセージは破棄
+			slog.LogAttrs(context.Background(), slog.LevelWarn, "client channel is full, dropping message")
+		}
 	}
 }
 
@@ -68,7 +75,7 @@ func (h *Hub) NewSSEHandler() http.Handler {
 				// クライアントが接続を切った場合
 				return
 			case msg := <-ch:
-				fmt.Fprintf(w, "data: %s\n\n", msg)
+				fmt.Fprintf(w, "data: %s", msg)
 				flusher.Flush()
 			}
 		}

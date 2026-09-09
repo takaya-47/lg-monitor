@@ -159,13 +159,15 @@ func checkTargets(ctx context.Context, client *http.Client, db *sql.DB, hub *sse
 	var b bytes.Buffer
 	enc := json.NewEncoder(&b)
 	for _, result := range results {
-		err := enc.Encode(result)
+		err := enc.Encode(newMonitorResultPayload(result))
 		if err != nil {
 			slog.LogAttrs(ctx, slog.LevelError, "cannot encode monitor result to JSON", slog.String("error", err.Error()))
 			continue
 		}
+
+		hub.Publish(b.String())
+		b.Reset()
 	}
-	hub.Publish(b.String())
 }
 
 type monitorTarget struct {
@@ -205,43 +207,43 @@ func fetchMonitorTargets(ctx context.Context, db *sql.DB) ([]monitorTarget, erro
 }
 
 type monitorResult struct {
-	MonitorTargetID int
-	CheckedAt       time.Time
-	IsSuccess       bool
-	StatusCode      sql.Null[int]
-	ResponseTimeMs  sql.Null[int]
-	ErrorMessage    string
+	monitorTargetID int
+	checkedAt       time.Time
+	isSuccess       bool
+	statusCode      sql.Null[int]
+	responseTimeMs  sql.Null[int]
+	errorMessage    string
 }
 
 // checkは監視対象にHTTPリクエストを送信し、結果を返却します
 func check(ctx context.Context, client *http.Client, target monitorTarget) monitorResult {
 	result := monitorResult{
-		MonitorTargetID: target.id,
-		CheckedAt:       time.Now(),
+		monitorTargetID: target.id,
+		checkedAt:       time.Now(),
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.url, nil)
 	if err != nil {
-		result.ErrorMessage = fmt.Errorf("error when creating request: %v", err).Error()
+		result.errorMessage = fmt.Errorf("error when creating request: %v", err).Error()
 		return result
 	}
 
 	res, err := client.Do(req)
 	if err != nil {
-		result.ErrorMessage = fmt.Errorf("error when sending request: %v", err).Error()
+		result.errorMessage = fmt.Errorf("error when sending request: %v", err).Error()
 		return result
 	}
 	defer res.Body.Close()
 
-	result.StatusCode = sql.Null[int]{V: res.StatusCode, Valid: true}
-	result.ResponseTimeMs = sql.Null[int]{V: int(time.Since(result.CheckedAt).Milliseconds()), Valid: true}
+	result.statusCode = sql.Null[int]{V: res.StatusCode, Valid: true}
+	result.responseTimeMs = sql.Null[int]{V: int(time.Since(result.checkedAt).Milliseconds()), Valid: true}
 
 	if res.StatusCode != http.StatusOK {
-		result.ErrorMessage = fmt.Errorf("status code is not 2xx: %v", res.Status).Error()
+		result.errorMessage = fmt.Errorf("status code is not 2xx: %v", res.Status).Error()
 		return result
 	}
 
-	result.IsSuccess = true
+	result.isSuccess = true
 	return result
 }
 
@@ -256,7 +258,7 @@ func saveMonitorResults(ctx context.Context, db *sql.DB, results []monitorResult
 	values := make([]any, 0, len(results)*columns)
 	for _, r := range results {
 		placeholders = append(placeholders, "(?, ?, ?, ?, ?, ?)")
-		values = append(values, r.MonitorTargetID, r.CheckedAt, r.IsSuccess, r.StatusCode, r.ResponseTimeMs, r.ErrorMessage)
+		values = append(values, r.monitorTargetID, r.checkedAt, r.isSuccess, r.statusCode, r.responseTimeMs, r.errorMessage)
 	}
 	query := fmt.Sprintf(
 		"INSERT INTO monitor_results (monitor_target_id, checked_at, is_success, status_code, response_time_ms, error_message) VALUES %s",
@@ -269,4 +271,31 @@ func saveMonitorResults(ctx context.Context, db *sql.DB, results []monitorResult
 	}
 
 	return nil
+}
+
+type monitorResultPayload struct {
+	MonitorTargetID int       `json:"monitor_target_id"`
+	CheckedAt       time.Time `json:"checked_at"`
+	IsSuccess       bool      `json:"is_success"`
+	StatusCode      *int      `json:"status_code,omitempty"`      // nullableカラムのため構造体のフィールドをポインタ型にしてnilを許容
+	ResponseTimeMs  *int      `json:"response_time_ms,omitempty"` // nullableカラムのため構造体のフィールドをポインタ型にしてnilを許容
+	ErrorMessage    string    `json:"error_message,omitempty"`
+}
+
+func newMonitorResultPayload(result monitorResult) monitorResultPayload {
+	p := monitorResultPayload{
+		MonitorTargetID: result.monitorTargetID,
+		CheckedAt:       result.checkedAt,
+		IsSuccess:       result.isSuccess,
+		ErrorMessage:    result.errorMessage,
+	}
+
+	if result.statusCode.Valid {
+		p.StatusCode = &result.statusCode.V
+	}
+	if result.responseTimeMs.Valid {
+		p.ResponseTimeMs = &result.responseTimeMs.V
+	}
+
+	return p
 }
