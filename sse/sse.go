@@ -81,7 +81,6 @@ func (h *Hub) NewSSEHandler() http.Handler {
 		for {
 			select {
 			case <-r.Context().Done():
-				// クライアントが接続を切った場合
 				return
 			case event := <-ch:
 				writeData(w, event)

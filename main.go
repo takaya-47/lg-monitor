@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -96,6 +97,10 @@ func monitor(ctx context.Context, db *sql.DB) error {
 		ReadTimeout:  0,
 		WriteTimeout: 0,
 		IdleTimeout:  0,
+		// このサーバーへのリクエストが持つベースコンテキストを指定
+		BaseContext: func(net.Listener) context.Context {
+			return ctx
+		},
 	}
 	// ListenAndServeはサーバー停止まで返らないため、別ゴルーチンで起動して監視ループに進めるようにする
 	serverErr := make(chan error, 1)
