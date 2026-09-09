@@ -37,7 +37,7 @@
         statusEl.textContent = '接続中';
     };
 
-    eventSource.onmessage = (event) => {
+    eventSource.addEventListener("monitoring completed", (event) => {
         const data = JSON.parse(event.data);
         const row = document.createElement('tr');
         row.innerHTML = `
@@ -49,7 +49,7 @@
             <td>${data.error_message}</td>
         `;
         resultsEl.appendChild(row);
-    };
+    });
 
     eventSource.onerror = () => {
         statusEl.textContent = '接続失敗';

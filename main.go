@@ -171,7 +171,10 @@ func checkTargets(ctx context.Context, client *http.Client, db *sql.DB, hub *sse
 			continue
 		}
 
-		hub.Publish(b.String())
+		hub.Publish(sse.Event{
+			Event: "monitoring completed",
+			Data:  b.String(),
+		})
 		b.Reset()
 	}
 }
