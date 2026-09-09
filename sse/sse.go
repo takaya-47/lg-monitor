@@ -78,20 +78,26 @@ func (h *Hub) NewSSEHandler() http.Handler {
 		ch := h.Subscribe()
 		defer h.UnSubscribe(ch)
 
+		e := Event{
+			Event: "connected to server",
+			Data:  "no data",
+		}
+		writeData(w, e, flusher)
+
 		for {
 			select {
 			case <-r.Context().Done():
 				return
 			case event := <-ch:
-				writeData(w, event)
-				flusher.Flush()
+				writeData(w, event, flusher)
 			}
 		}
 	})
 }
 
 // writeData は指定された io.Writer に対して SSE 形式で Event を書き込みます。
-func writeData(w io.Writer, e Event) {
+func writeData(w io.Writer, e Event, f http.Flusher) {
 	// SSE形式でデータを書き込む。SSEでは改行が重要なため、eの各フィールドの文字列については末尾の改行を削除しておく。
 	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", strings.TrimRight(e.Event, "\n"), strings.TrimRight(e.Data, "\n"))
+	f.Flush()
 }

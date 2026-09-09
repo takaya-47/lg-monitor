@@ -33,9 +33,9 @@
 
     const eventSource = new EventSource('/sse');
 
-    eventSource.onopen = () => {
+    eventSource.addEventListener("connected to server", (event) => {
         statusEl.textContent = '接続中';
-    };
+    });
 
     eventSource.addEventListener("monitoring completed", (event) => {
         const data = JSON.parse(event.data);
