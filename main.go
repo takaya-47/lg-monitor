@@ -114,10 +114,10 @@ func monitor(ctx context.Context, db *sql.DB, cfg config) error {
 
 	hub := sse.NewHub()
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("GET /", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// ルートHTMLを返すのみ
 		http.ServeFile(w, r, "./index.html")
-	})
+	}))
 	mux.Handle("GET /sse", hub.NewSSEHandler())
 	s := http.Server{
 		Addr:              ":" + cfg.serverPort,
