@@ -34,23 +34,57 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	db, err := connectDB(ctx)
+	cfg, err := configValue()
+	if err != nil {
+		return err
+	}
+
+	db, err := connectDB(ctx, cfg)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
 
-	err = monitor(ctx, db)
+	err = monitor(ctx, db, cfg)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-// connectDBはMySQLへの疎通を確認し、接続可能な場合はコネクションプールを返します。
-func connectDB(ctx context.Context) (*sql.DB, error) {
+type config struct {
+	DBDSN                  string
+	monitorIntervalMinutes int
+	serverPort             string
+}
+
+// configValue はアプリケーションの設定値を返却します。
+func configValue() (config, error) {
+	monitorIntervalMinutes, err := intervalMinutesForMonitoring()
+	if err != nil {
+		return config{}, err
+	}
+
+	return config{
+		DBDSN:                  os.Getenv("DB_DSN"),
+		monitorIntervalMinutes: monitorIntervalMinutes,
+		serverPort:             os.Getenv("SERVER_PORT"),
+	}, nil
+}
+
+// intervalMinutesForMonitoring は監視間隔（分）を返却します。
+func intervalMinutesForMonitoring() (int, error) {
+	v, err := strconv.Atoi(os.Getenv("MONITOR_INTERVAL_MINUTES"))
+	if err != nil {
+		return 0, fmt.Errorf("error when getting monitor interval minutes from env: %w", err)
+	}
+	return v, nil
+}
+
+// connectDB はMySQLへの疎通を確認し、接続可能な場合はコネクションプールを返します。
+func connectDB(ctx context.Context, cfg config) (*sql.DB, error) {
 	// DSNの検証
-	db, err := sql.Open("mysql", os.Getenv("DB_DSN"))
+	db, err := sql.Open("mysql", cfg.DBDSN)
 	if err != nil {
 		return nil, fmt.Errorf("dsn is invalid: %w", err)
 	}
@@ -67,19 +101,15 @@ func connectDB(ctx context.Context) (*sql.DB, error) {
 	return db, nil
 }
 
-// monitorは指定された間隔で監視を実行します。
-func monitor(ctx context.Context, db *sql.DB) error {
-	slog.LogAttrs(ctx, slog.LevelInfo, "monitoring started", slog.String("interval_minutes", os.Getenv("MONITOR_INTERVAL_MINUTES")))
+// monitor は指定された間隔で監視を実行します。
+func monitor(ctx context.Context, db *sql.DB, cfg config) error {
+	slog.LogAttrs(ctx, slog.LevelInfo, "monitoring started", slog.Int("interval_minutes", cfg.monitorIntervalMinutes))
 
 	client := http.Client{
 		Timeout: 10 * time.Second,
 	}
 
-	intervalMinutes, err := strconv.Atoi(os.Getenv("MONITOR_INTERVAL_MINUTES"))
-	if err != nil {
-		return fmt.Errorf("invalid env value: MONITOR_INTERVAL_MINUTES: %w", err)
-	}
-	ticker := time.NewTicker(time.Duration(intervalMinutes) * time.Minute)
+	ticker := time.NewTicker(time.Duration(cfg.monitorIntervalMinutes) * time.Minute)
 	defer ticker.Stop()
 
 	hub := sse.NewHub()
@@ -90,7 +120,7 @@ func monitor(ctx context.Context, db *sql.DB) error {
 	})
 	mux.Handle("GET /sse", hub.NewSSEHandler())
 	s := http.Server{
-		Addr:              ":" + os.Getenv("SERVER_PORT"),
+		Addr:              ":" + cfg.serverPort,
 		Handler:           mux,
 		ReadHeaderTimeout: 30 * time.Second,
 		// 以下、SSEでの通信中に接続が切られないようにするため0に設定
