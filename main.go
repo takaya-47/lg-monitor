@@ -18,7 +18,7 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/takaya-47/lg-monitor/sse"
+	"github.com/takaya-47/lg-monitor/internal/sse"
 )
 
 func main() {
