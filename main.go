@@ -113,26 +113,8 @@ func monitor(ctx context.Context, db *sql.DB, cfg config) error {
 	defer ticker.Stop()
 
 	hub := sse.NewHub()
-	mux := http.NewServeMux()
-	mux.Handle("GET /", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// ルートHTMLを返すのみ
-		http.ServeFile(w, r, "./index.html")
-	}))
-	mux.Handle("GET /sse", hub.NewSSEHandler())
-	s := http.Server{
-		Addr:              ":" + cfg.serverPort,
-		Handler:           mux,
-		ReadHeaderTimeout: 30 * time.Second,
-		// 以下、SSEでの通信中に接続が切られないようにするため0に設定
-		ReadTimeout:  0,
-		WriteTimeout: 0,
-		IdleTimeout:  0,
-		// このサーバーへのリクエストが持つベースコンテキストを指定
-		BaseContext: func(net.Listener) context.Context {
-			return ctx
-		},
-	}
-	// ListenAndServeはサーバー停止まで返らないため、別ゴルーチンで起動して監視ループに進めるようにする
+	s := newServer(ctx, cfg, hub)
+	// ListenAndServeはサーバー停止までポーズしてしまうため、別ゴルーチンで起動して後続処理へ進めるようにする
 	serverErr := make(chan error, 1)
 	go func() {
 		err := s.ListenAndServe()
@@ -158,6 +140,40 @@ func monitor(ctx context.Context, db *sql.DB, cfg config) error {
 			checkTargets(ctx, &client, db, hub)
 			slog.LogAttrs(ctx, slog.LevelInfo, "monitoring was completed")
 		}
+	}
+}
+
+// newRouter はHTTPルーターを生成して返却します。
+func newRouter(hub *sse.Hub) *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.Handle("GET /", rootHandler())
+	mux.Handle("GET /sse", hub.NewSSEHandler())
+
+	return mux
+}
+
+// rootHandler はルートパスにアクセスされた際のHTTPハンドラーを返却します。
+func rootHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// ルートとなるHTMLを返す
+		http.ServeFile(w, r, "./index.html")
+	})
+}
+
+// newServer はHTTPサーバーを生成して返却します。
+func newServer(ctx context.Context, cfg config, hub *sse.Hub) *http.Server {
+	return &http.Server{
+		Addr:              ":" + cfg.serverPort,
+		Handler:           newRouter(hub),
+		ReadHeaderTimeout: 30 * time.Second,
+		// 以下、SSEでの通信中に接続が切られないようにするため0に設定
+		ReadTimeout:  0,
+		WriteTimeout: 0,
+		IdleTimeout:  0,
+		// このサーバーへのリクエストが持つベースコンテキストを指定
+		BaseContext: func(net.Listener) context.Context {
+			return ctx
+		},
 	}
 }
 
