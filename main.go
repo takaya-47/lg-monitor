@@ -161,7 +161,7 @@ func monitor(ctx context.Context, db *sql.DB, cfg config) error {
 	}
 }
 
-// checkTargetsは1回分の監視を実行します。
+// checkTargets は1回分の監視を実行します。
 func checkTargets(ctx context.Context, client *http.Client, db *sql.DB, hub *sse.Hub) {
 	targets, err := fetchMonitorTargets(ctx, db)
 	if err != nil {
@@ -219,7 +219,7 @@ type monitorTarget struct {
 	url string
 }
 
-// fetchMonitorTargetsは監視対象のURLを取得します。
+// fetchMonitorTargets は監視対象のURLを取得します。
 func fetchMonitorTargets(ctx context.Context, db *sql.DB) ([]monitorTarget, error) {
 	const query string = `
 		SELECT id, url
@@ -259,7 +259,7 @@ type monitorResult struct {
 	errorMessage    string
 }
 
-// checkは監視対象にHTTPリクエストを送信し、結果を返却します
+// check は監視対象にHTTPリクエストを送信し、結果を返却します。
 func check(ctx context.Context, client *http.Client, target monitorTarget) monitorResult {
 	result := monitorResult{
 		monitorTargetID: target.id,
@@ -291,7 +291,7 @@ func check(ctx context.Context, client *http.Client, target monitorTarget) monit
 	return result
 }
 
-// saveMonitorResultsは監視結果をDBに保存します。
+// saveMonitorResults は監視結果をDBに保存します。
 func saveMonitorResults(ctx context.Context, db *sql.DB, results []monitorResult) error {
 	if len(results) == 0 {
 		return nil
@@ -326,6 +326,7 @@ type monitorResultPayload struct {
 	ErrorMessage    string    `json:"error_message"`
 }
 
+// newMonitorResultPayload は monitorResultPayload を返却します。
 func newMonitorResultPayload(result monitorResult) monitorResultPayload {
 	p := monitorResultPayload{
 		MonitorTargetID: result.monitorTargetID,
