@@ -266,7 +266,8 @@ func fetchMonitorTargets(ctx context.Context, db *sql.DB) ([]monitorTarget, erro
 		targets = append(targets, target)
 	}
 
-	// forループで行読み取り中に発生したエラーが存在すれば、ここでチェックする。
+	// rows.Nextがfalseを返すとforループを抜けるが、falseを返した理由が全行を正常に読み終えたからなのか、途中でエラーが発生したからなのかを確認するのに必須。
+	// つまり、rows.Err()がnilを返せば全行を正常に読み終えたということ。nilでなければ読み取り途中でエラーが発生したということ。
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("failed to iterate rows: %w", err)
 	}
