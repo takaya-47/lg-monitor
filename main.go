@@ -105,17 +105,10 @@ func connectDB(ctx context.Context, cfg config) (*sql.DB, error) {
 func monitor(ctx context.Context, db *sql.DB, cfg config) error {
 	slog.LogAttrs(ctx, slog.LevelInfo, "monitoring started", slog.Int("interval_minutes", cfg.monitorIntervalMinutes))
 
-	client := http.Client{
-		Timeout: 10 * time.Second,
-	}
-
-	ticker := time.NewTicker(time.Duration(cfg.monitorIntervalMinutes) * time.Minute)
-	defer ticker.Stop()
-
 	hub := sse.NewHub()
 	s := newServer(ctx, cfg, hub)
-	// ListenAndServeはサーバー停止までポーズしてしまうため、別ゴルーチンで起動して後続処理へ進めるようにする
 	serverErr := make(chan error, 1)
+	// ListenAndServeはサーバー停止までその行でポーズしてしまうため、ゴルーチンで起動して後続処理へ進めるようにする
 	go func() {
 		err := s.ListenAndServe()
 		// s.Shutdownによる終了時はErrServerClosedが返るので異常ではない。ここでエラー扱いとすべきはサーバー起動時のエラーのみ。
@@ -123,6 +116,13 @@ func monitor(ctx context.Context, db *sql.DB, cfg config) error {
 			serverErr <- fmt.Errorf("failed to start http server: %w", err)
 		}
 	}()
+
+	client := http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	ticker := time.NewTicker(time.Duration(cfg.monitorIntervalMinutes) * time.Minute)
+	defer ticker.Stop()
 
 	for {
 		select {
