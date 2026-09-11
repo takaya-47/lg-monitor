@@ -28,8 +28,8 @@ func NewHub() *Hub {
 	}
 }
 
-// Subscribe は新しいクライアント用のチャネルを作成し、Hub に登録して返します。
-func (h *Hub) Subscribe() chan Event {
+// subscribe は新しいクライアント用のチャネルを作成し、Hub に登録して返します。
+func (h *Hub) subscribe() chan Event {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -39,8 +39,8 @@ func (h *Hub) Subscribe() chan Event {
 	return ch
 }
 
-// UnSubscribe は指定されたクライアント用のチャネルを Hub から削除します。
-func (h *Hub) UnSubscribe(key chan Event) {
+// unSubscribe は指定されたクライアント用のチャネルを Hub から削除します。
+func (h *Hub) unSubscribe(key chan Event) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -75,8 +75,8 @@ func (h *Hub) NewSSEHandler() http.Handler {
 			return
 		}
 
-		ch := h.Subscribe()
-		defer h.UnSubscribe(ch)
+		ch := h.subscribe()
+		defer h.unSubscribe(ch)
 
 		e := Event{
 			Event: "connected to server",
