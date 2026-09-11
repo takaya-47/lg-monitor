@@ -23,7 +23,7 @@ import (
 
 func main() {
 	if err := run(); err != nil {
-		slog.LogAttrs(context.Background(), slog.LevelError, "failed to run", slog.String("error", err.Error()))
+		slog.LogAttrs(context.Background(), slog.LevelError, "fatal error", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 }
@@ -118,22 +118,30 @@ func monitor(ctx context.Context, db *sql.DB, cfg config) error {
 	serverErr := make(chan error, 1)
 	go func() {
 		err := s.ListenAndServe()
-		// ErrServerClosedはこちらのShutdown由来なので異常ではない
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			serverErr <- fmt.Errorf("failed to start sse server: %w", err)
+		// s.Shutdownによる終了時はErrServerClosedが返るので異常ではない。ここでエラー扱いとすべきはサーバー起動時のエラーのみ。
+		if !errors.Is(err, http.ErrServerClosed) {
+			serverErr <- fmt.Errorf("when starting http server: %w", err)
 		}
 	}()
 
 	for {
 		select {
 		case err := <-serverErr:
-			// SSEサーバーの起動に失敗した場合
 			return err
 		case <-ctx.Done():
 			// アプリケーションがシグナルにより終了する場合
 			slog.LogAttrs(ctx, slog.LevelInfo, "monitoring stopped", slog.String("reason", ctx.Err().Error()))
-			// TODO: グレースフルシャットダウン
-			_ = s.Shutdown(context.Background())
+
+			// SSEサーバーのグレースフルシャットダウン
+			// コンテナ停止までの猶予期間までにシャットダウンが完了しないと、サーバーを強制終了しつつコンテナも強制終了してしまい、この場合のロギングができない。
+			// よってシャットダウンに期限を設け、期限内に終了しない場合にエラーを受け取りつつ、コンテナの強制終了までにアプリケーションの片付けやロギングができるようにしている。
+			timeoutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			// タイムアウトエラーもしくはその他のシャットダウンエラーを受け取る
+			err := s.Shutdown(timeoutCtx)
+			if err != nil {
+				return fmt.Errorf("failed to shutdown server gracefully: %w", err)
+			}
 
 			return nil
 		case <-ticker.C:
