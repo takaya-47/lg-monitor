@@ -132,7 +132,8 @@ func monitor(ctx context.Context, db *sql.DB, cfg config) error {
 			// アプリケーションがシグナルにより終了する場合
 			slog.LogAttrs(ctx, slog.LevelInfo, "monitoring stopped", slog.String("reason", ctx.Err().Error()))
 
-			// SSEサーバーのグレースフルシャットダウン
+			// SSEサーバーのグレースフルシャットダウンを開始する
+			slog.LogAttrs(ctx, slog.LevelInfo, "starting graceful shutdown of http server")
 			// コンテナ停止までの猶予期間までにシャットダウンが完了しないと、サーバーを強制終了しつつコンテナも強制終了してしまい、この場合のロギングができない。
 			// よってシャットダウンに期限を設け、期限内に終了しない場合にエラーを受け取りつつ、コンテナの強制終了までにアプリケーションの片付けやロギングができるようにしている。
 			timeoutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -140,9 +141,10 @@ func monitor(ctx context.Context, db *sql.DB, cfg config) error {
 			// タイムアウトエラーもしくはその他のシャットダウンエラーを受け取る
 			err := s.Shutdown(timeoutCtx)
 			if err != nil {
-				return fmt.Errorf("failed to shutdown server gracefully: %w", err)
+				return fmt.Errorf("failed to shutdown http server gracefully: %w", err)
 			}
 
+			slog.LogAttrs(ctx, slog.LevelInfo, "http server shutdown gracefully")
 			return nil
 		case <-ticker.C:
 			checkTargets(ctx, &client, db, hub)
