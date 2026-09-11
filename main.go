@@ -76,7 +76,7 @@ func configValue() (config, error) {
 func intervalMinutesForMonitoring() (int, error) {
 	v, err := strconv.Atoi(os.Getenv("MONITOR_INTERVAL_MINUTES"))
 	if err != nil {
-		return 0, fmt.Errorf("error when getting monitor interval minutes from env: %w", err)
+		return 0, fmt.Errorf("failed to get monitor interval minutes: %w", err)
 	}
 	return v, nil
 }
@@ -86,7 +86,7 @@ func connectDB(ctx context.Context, cfg config) (*sql.DB, error) {
 	// DSNの検証
 	db, err := sql.Open("mysql", cfg.DBDSN)
 	if err != nil {
-		return nil, fmt.Errorf("dsn is invalid: %w", err)
+		return nil, fmt.Errorf("failed to verify DSN: %w", err)
 	}
 
 	db.SetConnMaxLifetime(3 * time.Minute) // MySQLサーバへの接続の寿命。経過後は接続を最初からやり直す。
@@ -96,7 +96,7 @@ func connectDB(ctx context.Context, cfg config) (*sql.DB, error) {
 	// 接続チェック
 	err = db.PingContext(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("error when connecting to database: %w", err)
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 	return db, nil
 }
@@ -120,7 +120,7 @@ func monitor(ctx context.Context, db *sql.DB, cfg config) error {
 		err := s.ListenAndServe()
 		// s.Shutdownによる終了時はErrServerClosedが返るので異常ではない。ここでエラー扱いとすべきはサーバー起動時のエラーのみ。
 		if !errors.Is(err, http.ErrServerClosed) {
-			serverErr <- fmt.Errorf("when starting http server: %w", err)
+			serverErr <- fmt.Errorf("failed to start http server: %w", err)
 		}
 	}()
 
@@ -252,7 +252,7 @@ func fetchMonitorTargets(ctx context.Context, db *sql.DB) ([]monitorTarget, erro
 	`
 	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
-		return nil, fmt.Errorf("error when fetching monitor targets: %w", err)
+		return nil, fmt.Errorf("failed to fetch monitor targets: %w", err)
 	}
 	defer rows.Close()
 
@@ -261,14 +261,14 @@ func fetchMonitorTargets(ctx context.Context, db *sql.DB) ([]monitorTarget, erro
 		var target monitorTarget
 		err := rows.Scan(&target.id, &target.url)
 		if err != nil {
-			return nil, fmt.Errorf("error when scanning record: %w", err)
+			return nil, fmt.Errorf("failed to scan record: %w", err)
 		}
 		targets = append(targets, target)
 	}
 
 	// forループで行読み取り中に発生したエラーが存在すれば、ここでチェックする。
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error when iterating rows: %w", err)
+		return nil, fmt.Errorf("failed to iterate rows: %w", err)
 	}
 
 	return targets, nil
@@ -292,13 +292,13 @@ func check(ctx context.Context, client *http.Client, target monitorTarget) monit
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.url, nil)
 	if err != nil {
-		result.errorMessage = fmt.Errorf("error when creating request: %v", err).Error()
+		result.errorMessage = fmt.Errorf("failed to create request: %v", err).Error()
 		return result
 	}
 
 	res, err := client.Do(req)
 	if err != nil {
-		result.errorMessage = fmt.Errorf("error when sending request: %v", err).Error()
+		result.errorMessage = fmt.Errorf("failed to send request: %v", err).Error()
 		return result
 	}
 	defer res.Body.Close()
@@ -335,7 +335,7 @@ func saveMonitorResults(ctx context.Context, db *sql.DB, results []monitorResult
 
 	_, err := db.ExecContext(ctx, query, values...)
 	if err != nil {
-		return fmt.Errorf("error when executing insert: %w", err)
+		return fmt.Errorf("failed to execute insert: %w", err)
 	}
 
 	return nil
