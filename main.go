@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,6 +17,7 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/takaya-47/lg-monitor/internal/server"
 	"github.com/takaya-47/lg-monitor/internal/sse"
 )
 
@@ -106,7 +106,7 @@ func monitor(ctx context.Context, db *sql.DB, cfg config) error {
 	slog.LogAttrs(ctx, slog.LevelInfo, "monitoring started", slog.Int("interval_minutes", cfg.monitorIntervalMinutes))
 
 	hub := sse.NewHub()
-	s := newServer(ctx, cfg, hub)
+	s := server.NewServer(ctx, cfg.serverPort, hub.NewSSEHandler())
 	serverErr := make(chan error, 1)
 	// ListenAndServeはサーバー停止までその行でポーズしてしまうため、ゴルーチンで起動して後続処理へ進めるようにする
 	go func() {
@@ -150,40 +150,6 @@ func monitor(ctx context.Context, db *sql.DB, cfg config) error {
 			checkTargets(ctx, &client, db, hub)
 			slog.LogAttrs(ctx, slog.LevelInfo, "monitoring was completed")
 		}
-	}
-}
-
-// newRouter はHTTPルーターを生成して返却します。
-func newRouter(hub *sse.Hub) *http.ServeMux {
-	mux := http.NewServeMux()
-	mux.Handle("GET /", rootHandler())
-	mux.Handle("GET /sse", hub.NewSSEHandler())
-
-	return mux
-}
-
-// rootHandler はルートパスにアクセスされた際のHTTPハンドラーを返却します。
-func rootHandler() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// ルートとなるHTMLを返す
-		http.ServeFile(w, r, "./index.html")
-	})
-}
-
-// newServer はHTTPサーバーを生成して返却します。
-func newServer(ctx context.Context, cfg config, hub *sse.Hub) *http.Server {
-	return &http.Server{
-		Addr:              ":" + cfg.serverPort,
-		Handler:           newRouter(hub),
-		ReadHeaderTimeout: 30 * time.Second,
-		// 以下、SSEでの通信中に接続が切られないようにするため0に設定
-		ReadTimeout:  0,
-		WriteTimeout: 0,
-		IdleTimeout:  0,
-		// このサーバーへのリクエストが持つベースコンテキストを指定
-		BaseContext: func(net.Listener) context.Context {
-			return ctx
-		},
 	}
 }
 
