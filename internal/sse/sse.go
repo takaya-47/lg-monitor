@@ -2,53 +2,90 @@ package sse
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
+	"time"
+
+	"github.com/takaya-47/lg-monitor/internal/monitor"
 )
 
 type Hub struct {
 	mu      sync.Mutex
-	clients map[chan Event]bool
+	clients map[chan event]bool
 }
 
-type Event struct {
+type event struct {
 	Event string
 	Data  string
+}
+
+type monitorResultPayload struct {
+	MonitorTargetID int       `json:"monitor_target_id"`
+	CheckedAt       time.Time `json:"checked_at"`
+	IsSuccess       bool      `json:"is_success"`
+	StatusCode      *int      `json:"status_code"`
+	ResponseTimeMs  *int      `json:"response_time_ms"`
+	ErrorMessage    string    `json:"error_message"`
 }
 
 // NewHub は新しい Hub を作成して返します。
 func NewHub() *Hub {
 	return &Hub{
 		mu:      sync.Mutex{},
-		clients: make(map[chan Event]bool),
+		clients: make(map[chan event]bool),
 	}
 }
 
 // subscribe は新しいクライアント用のチャネルを作成し、Hub に登録して返します。
-func (h *Hub) subscribe() chan Event {
+func (h *Hub) subscribe() chan event {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
 	// バッファ付きチャネルにしておくことでブロックを防止
-	ch := make(chan Event, 200)
+	ch := make(chan event, 200)
 	h.clients[ch] = true
 	return ch
 }
 
 // unSubscribe は指定されたクライアント用のチャネルを Hub から削除します。
-func (h *Hub) unSubscribe(key chan Event) {
+func (h *Hub) unSubscribe(key chan event) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
 	delete(h.clients, key)
 }
 
-// Publish は Hub に登録されている全てのクライアントにメッセージを送信します。
-func (h *Hub) Publish(msg Event) {
+// BroadcastMonitorResult は監視結果を全てのクライアントに配信します。
+func (h *Hub) BroadcastMonitorResult(results []monitor.Result) error {
+	for _, result := range results {
+		b, err := json.Marshal(monitorResultPayload{
+			MonitorTargetID: result.Target.ID,
+			CheckedAt:       result.CheckedAt,
+			IsSuccess:       result.IsSuccess,
+			StatusCode:      result.StatusCode,
+			ResponseTimeMs:  result.ResponseTimeMs,
+			ErrorMessage:    result.ErrorMessage,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to convert to JSON: %w", err)
+		}
+
+		h.publish(event{
+			Event: "monitoring completed",
+			Data:  string(b),
+		})
+	}
+
+	return nil
+}
+
+// publish は Hub に登録されている全てのクライアントにメッセージを送信します。
+func (h *Hub) publish(msg event) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -78,7 +115,7 @@ func (h *Hub) NewSSEHandler() http.Handler {
 		ch := h.subscribe()
 		defer h.unSubscribe(ch)
 
-		e := Event{
+		e := event{
 			Event: "connected to server",
 			Data:  "no data",
 		}
@@ -96,7 +133,7 @@ func (h *Hub) NewSSEHandler() http.Handler {
 }
 
 // writeData は指定された io.Writer に対して SSE 形式で Event を書き込みます。
-func writeData(w io.Writer, e Event, f http.Flusher) {
+func writeData(w io.Writer, e event, f http.Flusher) {
 	// SSE形式でデータを書き込む。SSEでは改行が重要なため、eの各フィールドの文字列については末尾の改行を削除しておく。
 	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", strings.TrimRight(e.Event, "\n"), strings.TrimRight(e.Data, "\n"))
 	f.Flush()

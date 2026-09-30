@@ -16,8 +16,8 @@ type Result struct {
 	Target         Target
 	CheckedAt      time.Time
 	IsSuccess      bool
-	StatusCode     *int
-	ResponseTimeMs *int
+	StatusCode     *int // レスポンスを受け取れない場合があるためポインタ型にしてnilを許容
+	ResponseTimeMs *int // レスポンスを受け取れない場合があるためポインタ型にしてnilを許容
 	ErrorMessage   string
 }
 

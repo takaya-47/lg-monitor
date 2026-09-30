@@ -154,125 +154,18 @@ func execMonitor(ctx context.Context, db *sql.DB, cfg config) error {
 				continue
 			}
 
-			// TODO: sseパッケージを使って監視結果をクライアントに配信する
+			err = hub.BroadcastMonitorResult(results)
+			if err != nil {
+				slog.LogAttrs(
+					ctx,
+					slog.LevelWarn,
+					"failed to broadcast monitor results",
+					slog.String("error", err.Error()),
+				)
+				continue
+			}
 
 			slog.LogAttrs(ctx, slog.LevelInfo, "monitoring was completed")
 		}
 	}
-}
-
-// // checkTargets は1回分の監視を実行します。
-// func checkTargets(ctx context.Context, client *http.Client, db *sql.DB, hub *sse.Hub) {
-// 	targets, err := fetchMonitorTargets(ctx, db)
-// 	if err != nil {
-// 		slog.LogAttrs(ctx, slog.LevelError, "cannot fetch monitor targets, skipping this cycle", slog.String("error", err.Error()))
-// 		return
-// 	}
-
-// 	if len(targets) == 0 {
-// 		slog.LogAttrs(ctx, slog.LevelInfo, "nothing to monitor, skipping this cycle")
-// 		return
-// 	}
-
-// 	// 監視対象1件の結果を格納するバッファ付きチャネル。
-// 	// バッファ付きチャネルを作成することで、複数のゴルーチンが結果を送信する際にブロックされるのを防げる。
-// 	ch := make(chan monitorResult, len(targets))
-// 	// ここでfan-outして各監視対象に対して並行処理でHTTPリクエストを送信
-// 	for _, target := range targets {
-// 		go func(target monitorTarget) {
-// 			ch <- check(ctx, client, target)
-// 		}(target)
-// 	}
-
-// 	// 長さ0、容量が監視対象数となるスライス（メモリの追加割り当てによるパフォーマンス劣化を防止）
-// 	results := make([]monitorResult, 0, len(targets))
-// 	// ここでfan-inしてリクエスト結果を集約
-// 	for i := 0; i < len(targets); i++ {
-// 		results = append(results, <-ch)
-// 	}
-
-// 	err = saveMonitorResults(ctx, db, results)
-// 	if err != nil {
-// 		slog.LogAttrs(ctx, slog.LevelError, "cannot save monitor results, skipping this cycle", slog.String("error", err.Error()))
-// 		return
-// 	}
-
-// 	var b bytes.Buffer
-// 	enc := json.NewEncoder(&b)
-// 	for _, result := range results {
-// 		err := enc.Encode(newMonitorResultPayload(result))
-// 		if err != nil {
-// 			slog.LogAttrs(ctx, slog.LevelError, "cannot encode monitor result to JSON", slog.String("error", err.Error()))
-// 			continue
-// 		}
-
-// 		hub.Publish(sse.Event{
-// 			Event: "monitoring completed",
-// 			Data:  b.String(),
-// 		})
-// 		b.Reset()
-// 	}
-// }
-
-type monitorResult struct {
-	monitorTargetID int
-	checkedAt       time.Time
-	isSuccess       bool
-	statusCode      sql.Null[int]
-	responseTimeMs  sql.Null[int]
-	errorMessage    string
-}
-
-// // saveMonitorResults は監視結果をDBに保存します。
-// func saveMonitorResults(ctx context.Context, db *sql.DB, results []monitorResult) error {
-// 	if len(results) == 0 {
-// 		return nil
-// 	}
-
-// 	columns := 6
-// 	placeholders := make([]string, 0, len(results))
-// 	values := make([]any, 0, len(results)*columns)
-// 	for _, r := range results {
-// 		placeholders = append(placeholders, "(?, ?, ?, ?, ?, ?)")
-// 		values = append(values, r.monitorTargetID, r.checkedAt, r.isSuccess, r.statusCode, r.responseTimeMs, r.errorMessage)
-// 	}
-// 	query := fmt.Sprintf(
-// 		"INSERT INTO monitor_results (monitor_target_id, checked_at, is_success, status_code, response_time_ms, error_message) VALUES %s",
-// 		strings.Join(placeholders, ","),
-// 	)
-
-// 	_, err := db.ExecContext(ctx, query, values...)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to execute insert: %w", err)
-// 	}
-
-// 	return nil
-// }
-
-type monitorResultPayload struct {
-	MonitorTargetID int       `json:"monitor_target_id"`
-	CheckedAt       time.Time `json:"checked_at"`
-	IsSuccess       bool      `json:"is_success"`
-	StatusCode      *int      `json:"status_code"`      // nullableカラムのため構造体のフィールドをポインタ型にしてnilを許容
-	ResponseTimeMs  *int      `json:"response_time_ms"` // nullableカラムのため構造体のフィールドをポインタ型にしてnilを許容
-	ErrorMessage    string    `json:"error_message"`
-}
-
-// newMonitorResultPayload は monitorResultPayload を返却します。
-func newMonitorResultPayload(result monitorResult) monitorResultPayload {
-	p := monitorResultPayload{
-		MonitorTargetID: result.monitorTargetID,
-		CheckedAt:       result.checkedAt,
-		IsSuccess:       result.isSuccess,
-		ErrorMessage:    result.errorMessage,
-	}
-
-	if result.statusCode.Valid {
-		p.StatusCode = &result.statusCode.V
-	}
-	if result.responseTimeMs.Valid {
-		p.ResponseTimeMs = &result.responseTimeMs.V
-	}
-
-	return p
 }
