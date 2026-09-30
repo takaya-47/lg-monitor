@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
@@ -144,8 +143,19 @@ func execMonitor(ctx context.Context, db *sql.DB, cfg config) error {
 
 			results := monitor.CheckTargets(ctx, &client, targets)
 
-			// TODO: 監視結果をstorageパッケージを使って保存する。
+			err = rdb.SaveMonitorResults(ctx, db, results)
+			if err != nil {
+				slog.LogAttrs(
+					ctx,
+					slog.LevelWarn,
+					"monitoring succeeded, but failed to save results",
+					slog.String("error", err.Error()),
+				)
+				continue
+			}
+
 			// TODO: sseパッケージを使って監視結果をクライアントに配信する
+
 			slog.LogAttrs(ctx, slog.LevelInfo, "monitoring was completed")
 		}
 	}
@@ -213,31 +223,31 @@ type monitorResult struct {
 	errorMessage    string
 }
 
-// saveMonitorResults は監視結果をDBに保存します。
-func saveMonitorResults(ctx context.Context, db *sql.DB, results []monitorResult) error {
-	if len(results) == 0 {
-		return nil
-	}
+// // saveMonitorResults は監視結果をDBに保存します。
+// func saveMonitorResults(ctx context.Context, db *sql.DB, results []monitorResult) error {
+// 	if len(results) == 0 {
+// 		return nil
+// 	}
 
-	columns := 6
-	placeholders := make([]string, 0, len(results))
-	values := make([]any, 0, len(results)*columns)
-	for _, r := range results {
-		placeholders = append(placeholders, "(?, ?, ?, ?, ?, ?)")
-		values = append(values, r.monitorTargetID, r.checkedAt, r.isSuccess, r.statusCode, r.responseTimeMs, r.errorMessage)
-	}
-	query := fmt.Sprintf(
-		"INSERT INTO monitor_results (monitor_target_id, checked_at, is_success, status_code, response_time_ms, error_message) VALUES %s",
-		strings.Join(placeholders, ","),
-	)
+// 	columns := 6
+// 	placeholders := make([]string, 0, len(results))
+// 	values := make([]any, 0, len(results)*columns)
+// 	for _, r := range results {
+// 		placeholders = append(placeholders, "(?, ?, ?, ?, ?, ?)")
+// 		values = append(values, r.monitorTargetID, r.checkedAt, r.isSuccess, r.statusCode, r.responseTimeMs, r.errorMessage)
+// 	}
+// 	query := fmt.Sprintf(
+// 		"INSERT INTO monitor_results (monitor_target_id, checked_at, is_success, status_code, response_time_ms, error_message) VALUES %s",
+// 		strings.Join(placeholders, ","),
+// 	)
 
-	_, err := db.ExecContext(ctx, query, values...)
-	if err != nil {
-		return fmt.Errorf("failed to execute insert: %w", err)
-	}
+// 	_, err := db.ExecContext(ctx, query, values...)
+// 	if err != nil {
+// 		return fmt.Errorf("failed to execute insert: %w", err)
+// 	}
 
-	return nil
-}
+// 	return nil
+// }
 
 type monitorResultPayload struct {
 	MonitorTargetID int       `json:"monitor_target_id"`

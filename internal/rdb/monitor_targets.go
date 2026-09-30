@@ -9,7 +9,7 @@ import (
 )
 
 // FetchMonitorTargets は監視対象を取得します。
-func FetchMonitorTargets(ctx context.Context, db *sql.DB) ([]monitor.MonitorTarget, error) {
+func FetchMonitorTargets(ctx context.Context, db *sql.DB) ([]monitor.Target, error) {
 	const query string = `
 		SELECT id, url
 	      FROM monitor_targets
@@ -21,9 +21,9 @@ func FetchMonitorTargets(ctx context.Context, db *sql.DB) ([]monitor.MonitorTarg
 	}
 	defer rows.Close()
 
-	var targets []monitor.MonitorTarget
+	var targets []monitor.Target
 	for rows.Next() {
-		var target monitor.MonitorTarget
+		var target monitor.Target
 		err := rows.Scan(&target.ID, &target.URL)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan record: %w", err)
