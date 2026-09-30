@@ -7,13 +7,13 @@ import (
 	"time"
 )
 
-type Target struct {
-	id  int
-	url string
+type MonitorTarget struct {
+	ID  int
+	URL string
 }
 
 type Result struct {
-	target         Target
+	target         MonitorTarget
 	checkedAt      time.Time
 	isSuccess      bool
 	statusCode     *int
@@ -21,14 +21,14 @@ type Result struct {
 	errorMessage   string
 }
 
-// CheckTargets は1回分の監視を実行します。
-func CheckTargets(ctx context.Context, client *http.Client, targets []Target) []Result {
+// CheckTargets は監視対象全てに対して監視を実行します。
+func CheckTargets(ctx context.Context, client *http.Client, targets []MonitorTarget) []Result {
 	// 監視対象1件の結果を格納するバッファ付きチャネル。
 	// バッファ付きチャネルを作成することで、複数のゴルーチンが結果を送信する際にブロックされるのを防げる。
 	ch := make(chan Result, len(targets))
 	// ここでfan-outして各監視対象に対して並行処理でHTTPリクエストを送信
 	for _, target := range targets {
-		go func(target Target) {
+		go func(target MonitorTarget) {
 			ch <- check(ctx, client, target)
 		}(target)
 	}
@@ -44,13 +44,13 @@ func CheckTargets(ctx context.Context, client *http.Client, targets []Target) []
 }
 
 // check は監視対象にHTTPリクエストを送信し、結果を返却します。
-func check(ctx context.Context, client *http.Client, target Target) Result {
+func check(ctx context.Context, client *http.Client, target MonitorTarget) Result {
 	result := Result{
 		target:    target,
 		checkedAt: time.Now(),
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.URL, nil)
 	if err != nil {
 		result.errorMessage = fmt.Errorf("failed to create request: %v", err).Error()
 		return result

@@ -1,10 +1,8 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -17,6 +15,8 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/takaya-47/lg-monitor/internal/monitor"
+	"github.com/takaya-47/lg-monitor/internal/rdb"
 	"github.com/takaya-47/lg-monitor/internal/server"
 	"github.com/takaya-47/lg-monitor/internal/sse"
 )
@@ -39,13 +39,13 @@ func run() error {
 		return err
 	}
 
-	db, err := connectDB(ctx, cfg)
+	db, err := rdb.Connect(ctx, cfg.DBDSN)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
 
-	err = monitor(ctx, db, cfg)
+	err = execMonitor(ctx, db, cfg)
 	if err != nil {
 		return err
 	}
@@ -81,28 +81,8 @@ func intervalMinutesForMonitoring() (int, error) {
 	return v, nil
 }
 
-// connectDB はMySQLへの疎通を確認し、接続可能な場合はコネクションプールを返します。
-func connectDB(ctx context.Context, cfg config) (*sql.DB, error) {
-	// DSNの検証
-	db, err := sql.Open("mysql", cfg.DBDSN)
-	if err != nil {
-		return nil, fmt.Errorf("failed to verify DSN: %w", err)
-	}
-
-	db.SetConnMaxLifetime(3 * time.Minute) // MySQLサーバへの接続の寿命。経過後は接続を最初からやり直す。
-	db.SetMaxOpenConns(10)                 // コネクションプールに対して同時に開くことができる最大接続数
-	db.SetMaxIdleConns(10)                 // コネクションプールがアイドル状態で保持する接続の最大数
-
-	// 接続チェック
-	err = db.PingContext(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to database: %w", err)
-	}
-	return db, nil
-}
-
-// monitor は指定された間隔で監視を実行します。
-func monitor(ctx context.Context, db *sql.DB, cfg config) error {
+// execMonitor は指定された間隔で監視を実行します。
+func execMonitor(ctx context.Context, db *sql.DB, cfg config) error {
 	slog.LogAttrs(ctx, slog.LevelInfo, "monitoring started", slog.Int("interval_minutes", cfg.monitorIntervalMinutes))
 
 	hub := sse.NewHub()
@@ -147,101 +127,82 @@ func monitor(ctx context.Context, db *sql.DB, cfg config) error {
 			slog.LogAttrs(ctx, slog.LevelInfo, "http server shutdown gracefully")
 			return nil
 		case <-ticker.C:
-			checkTargets(ctx, &client, db, hub)
+			targets, err := rdb.FetchMonitorTargets(ctx, db)
+			if err != nil {
+				slog.LogAttrs(
+					ctx,
+					slog.LevelWarn,
+					"failed to fetch monitor targets, skipping this cycle",
+					slog.String("error", err.Error()),
+				)
+				continue
+			}
+			if len(targets) == 0 {
+				slog.LogAttrs(ctx, slog.LevelInfo, "no monitor targets found, skipping this cycle")
+				continue
+			}
+
+			results := monitor.CheckTargets(ctx, &client, targets)
+
+			// TODO: 監視結果をstorageパッケージを使って保存する。
+			// TODO: sseパッケージを使って監視結果をクライアントに配信する
 			slog.LogAttrs(ctx, slog.LevelInfo, "monitoring was completed")
 		}
 	}
 }
 
-// checkTargets は1回分の監視を実行します。
-func checkTargets(ctx context.Context, client *http.Client, db *sql.DB, hub *sse.Hub) {
-	targets, err := fetchMonitorTargets(ctx, db)
-	if err != nil {
-		slog.LogAttrs(ctx, slog.LevelError, "cannot fetch monitor targets, skipping this cycle", slog.String("error", err.Error()))
-		return
-	}
+// // checkTargets は1回分の監視を実行します。
+// func checkTargets(ctx context.Context, client *http.Client, db *sql.DB, hub *sse.Hub) {
+// 	targets, err := fetchMonitorTargets(ctx, db)
+// 	if err != nil {
+// 		slog.LogAttrs(ctx, slog.LevelError, "cannot fetch monitor targets, skipping this cycle", slog.String("error", err.Error()))
+// 		return
+// 	}
 
-	if len(targets) == 0 {
-		slog.LogAttrs(ctx, slog.LevelInfo, "nothing to monitor, skipping this cycle")
-		return
-	}
+// 	if len(targets) == 0 {
+// 		slog.LogAttrs(ctx, slog.LevelInfo, "nothing to monitor, skipping this cycle")
+// 		return
+// 	}
 
-	// 監視対象1件の結果を格納するバッファ付きチャネル。
-	// バッファ付きチャネルを作成することで、複数のゴルーチンが結果を送信する際にブロックされるのを防げる。
-	ch := make(chan monitorResult, len(targets))
-	// ここでfan-outして各監視対象に対して並行処理でHTTPリクエストを送信
-	for _, target := range targets {
-		go func(target monitorTarget) {
-			ch <- check(ctx, client, target)
-		}(target)
-	}
+// 	// 監視対象1件の結果を格納するバッファ付きチャネル。
+// 	// バッファ付きチャネルを作成することで、複数のゴルーチンが結果を送信する際にブロックされるのを防げる。
+// 	ch := make(chan monitorResult, len(targets))
+// 	// ここでfan-outして各監視対象に対して並行処理でHTTPリクエストを送信
+// 	for _, target := range targets {
+// 		go func(target monitorTarget) {
+// 			ch <- check(ctx, client, target)
+// 		}(target)
+// 	}
 
-	// 長さ0、容量が監視対象数となるスライス（メモリの追加割り当てによるパフォーマンス劣化を防止）
-	results := make([]monitorResult, 0, len(targets))
-	// ここでfan-inしてリクエスト結果を集約
-	for i := 0; i < len(targets); i++ {
-		results = append(results, <-ch)
-	}
+// 	// 長さ0、容量が監視対象数となるスライス（メモリの追加割り当てによるパフォーマンス劣化を防止）
+// 	results := make([]monitorResult, 0, len(targets))
+// 	// ここでfan-inしてリクエスト結果を集約
+// 	for i := 0; i < len(targets); i++ {
+// 		results = append(results, <-ch)
+// 	}
 
-	err = saveMonitorResults(ctx, db, results)
-	if err != nil {
-		slog.LogAttrs(ctx, slog.LevelError, "cannot save monitor results, skipping this cycle", slog.String("error", err.Error()))
-		return
-	}
+// 	err = saveMonitorResults(ctx, db, results)
+// 	if err != nil {
+// 		slog.LogAttrs(ctx, slog.LevelError, "cannot save monitor results, skipping this cycle", slog.String("error", err.Error()))
+// 		return
+// 	}
 
-	var b bytes.Buffer
-	enc := json.NewEncoder(&b)
-	for _, result := range results {
-		err := enc.Encode(newMonitorResultPayload(result))
-		if err != nil {
-			slog.LogAttrs(ctx, slog.LevelError, "cannot encode monitor result to JSON", slog.String("error", err.Error()))
-			continue
-		}
+// 	var b bytes.Buffer
+// 	enc := json.NewEncoder(&b)
+// 	for _, result := range results {
+// 		err := enc.Encode(newMonitorResultPayload(result))
+// 		if err != nil {
+// 			slog.LogAttrs(ctx, slog.LevelError, "cannot encode monitor result to JSON", slog.String("error", err.Error()))
+// 			continue
+// 		}
 
-		hub.Publish(sse.Event{
-			Event: "monitoring completed",
-			Data:  b.String(),
-		})
-		b.Reset()
-	}
-}
-
-type monitorTarget struct {
-	id  int
-	url string
-}
-
-// fetchMonitorTargets は監視対象のURLを取得します。
-func fetchMonitorTargets(ctx context.Context, db *sql.DB) ([]monitorTarget, error) {
-	const query string = `
-		SELECT id, url
-	      FROM monitor_targets
-		 WHERE is_active = 1
-	`
-	rows, err := db.QueryContext(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch monitor targets: %w", err)
-	}
-	defer rows.Close()
-
-	var targets []monitorTarget
-	for rows.Next() {
-		var target monitorTarget
-		err := rows.Scan(&target.id, &target.url)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan record: %w", err)
-		}
-		targets = append(targets, target)
-	}
-
-	// rows.Nextがfalseを返すとforループを抜けるが、falseを返した理由が全行を正常に読み終えたからなのか、途中でエラーが発生したからなのかを確認するのに必須。
-	// つまり、rows.Err()がnilを返せば全行を正常に読み終えたということ。nilでなければ読み取り途中でエラーが発生したということ。
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("failed to iterate rows: %w", err)
-	}
-
-	return targets, nil
-}
+// 		hub.Publish(sse.Event{
+// 			Event: "monitoring completed",
+// 			Data:  b.String(),
+// 		})
+// 		b.Reset()
+// 	}
+// }
 
 type monitorResult struct {
 	monitorTargetID int
@@ -250,38 +211,6 @@ type monitorResult struct {
 	statusCode      sql.Null[int]
 	responseTimeMs  sql.Null[int]
 	errorMessage    string
-}
-
-// check は監視対象にHTTPリクエストを送信し、結果を返却します。
-func check(ctx context.Context, client *http.Client, target monitorTarget) monitorResult {
-	result := monitorResult{
-		monitorTargetID: target.id,
-		checkedAt:       time.Now(),
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.url, nil)
-	if err != nil {
-		result.errorMessage = fmt.Errorf("failed to create request: %v", err).Error()
-		return result
-	}
-
-	res, err := client.Do(req)
-	if err != nil {
-		result.errorMessage = fmt.Errorf("failed to send request: %v", err).Error()
-		return result
-	}
-	defer res.Body.Close()
-
-	result.statusCode = sql.Null[int]{V: res.StatusCode, Valid: true}
-	result.responseTimeMs = sql.Null[int]{V: int(time.Since(result.checkedAt).Milliseconds()), Valid: true}
-
-	if res.StatusCode != http.StatusOK {
-		result.errorMessage = fmt.Errorf("status code is not 2xx: %v", res.Status).Error()
-		return result
-	}
-
-	result.isSuccess = true
-	return result
 }
 
 // saveMonitorResults は監視結果をDBに保存します。
