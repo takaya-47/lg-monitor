@@ -5,10 +5,16 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
+
+	_ "github.com/go-sql-driver/mysql"
 )
 
-// Connect はMySQLへの疎通を確認し、接続可能な場合はコネクションプールを返します。
-func Connect(ctx context.Context, DBDSN string) (*sql.DB, error) {
+type Store struct {
+	db *sql.DB
+}
+
+// NewStore はMySQLへの疎通を確認し、接続可能な場合はコネクションプールを返します。
+func NewStore(ctx context.Context, DBDSN string) (*Store, error) {
 	// DSNの検証
 	db, err := sql.Open("mysql", DBDSN)
 	if err != nil {
@@ -22,7 +28,13 @@ func Connect(ctx context.Context, DBDSN string) (*sql.DB, error) {
 	// 接続チェック
 	err = db.PingContext(ctx)
 	if err != nil {
+		db.Close()
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
-	return db, nil
+	return &Store{db: db}, nil
+}
+
+// Close はデータベース接続を閉じます。
+func (s *Store) Close() error {
+	return s.db.Close()
 }

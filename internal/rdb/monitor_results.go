@@ -2,15 +2,14 @@ package rdb
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strings"
 
 	"github.com/takaya-47/lg-monitor/internal/monitor"
 )
 
-// SaveMonitorResults は監視結果をDBに保存します。
-func SaveMonitorResults(ctx context.Context, db *sql.DB, results []monitor.Result) error {
+// Save は監視結果をDBに保存します。
+func (s *Store) Save(ctx context.Context, results []monitor.Result) error {
 	if len(results) == 0 {
 		return nil
 	}
@@ -27,7 +26,7 @@ func SaveMonitorResults(ctx context.Context, db *sql.DB, results []monitor.Resul
 		strings.Join(placeholders, ","),
 	)
 
-	_, err := db.ExecContext(ctx, query, values...)
+	_, err := s.db.ExecContext(ctx, query, values...)
 	if err != nil {
 		return fmt.Errorf("failed to execute insert: %w", err)
 	}

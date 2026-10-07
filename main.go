@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -13,7 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
 	"github.com/takaya-47/lg-monitor/internal/monitor"
 	"github.com/takaya-47/lg-monitor/internal/rdb"
 	"github.com/takaya-47/lg-monitor/internal/server"
@@ -38,13 +36,17 @@ func run() error {
 		return err
 	}
 
-	db, err := rdb.Connect(ctx, cfg.DBDSN)
+	store, err := rdb.NewStore(ctx, cfg.DBDSN)
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() {
+		if err := store.Close(); err != nil {
+			slog.LogAttrs(ctx, slog.LevelWarn, "failed to close database", slog.String("error", err.Error()))
+		}
+	}()
 
-	err = execMonitor(ctx, db, cfg)
+	err = exec(ctx, store, cfg)
 	if err != nil {
 		return err
 	}
@@ -80,10 +82,8 @@ func intervalMinutesForMonitoring() (int, error) {
 	return v, nil
 }
 
-// execMonitor は指定された間隔で監視を実行します。
-func execMonitor(ctx context.Context, db *sql.DB, cfg config) error {
-	slog.LogAttrs(ctx, slog.LevelInfo, "monitoring started", slog.Int("interval_minutes", cfg.monitorIntervalMinutes))
-
+// exec はアプリケーションを実行します。
+func exec(ctx context.Context, store *rdb.Store, cfg config) error {
 	hub := sse.NewHub()
 	s := server.NewServer(ctx, cfg.serverPort, hub.NewSSEHandler())
 	serverErr := make(chan error, 1)
@@ -96,6 +96,14 @@ func execMonitor(ctx context.Context, db *sql.DB, cfg config) error {
 		}
 	}()
 
+	targetRepository, err := rdb.NewStore(ctx, cfg.DBDSN)
+	if err != nil {
+		return fmt.Errorf("failed to create target repository: %w", err)
+	}
+	resultRepository, err := rdb.NewStore(ctx, cfg.DBDSN)
+	if err != nil {
+		return fmt.Errorf("failed to create result repository: %w", err)
+	}
 	client := http.Client{
 		Timeout: 10 * time.Second,
 	}
@@ -126,46 +134,20 @@ func execMonitor(ctx context.Context, db *sql.DB, cfg config) error {
 			slog.LogAttrs(ctx, slog.LevelInfo, "http server shutdown gracefully")
 			return nil
 		case <-ticker.C:
-			targets, err := rdb.FetchMonitorTargets(ctx, db)
+			slog.LogAttrs(ctx, slog.LevelInfo, "monitoring started")
+
+			err := monitor.Monitor(ctx, &client, targetRepository, resultRepository, hub)
 			if err != nil {
 				slog.LogAttrs(
 					ctx,
 					slog.LevelWarn,
-					"failed to fetch monitor targets, skipping this cycle",
-					slog.String("error", err.Error()),
-				)
-				continue
-			}
-			if len(targets) == 0 {
-				slog.LogAttrs(ctx, slog.LevelInfo, "no monitor targets found, skipping this cycle")
-				continue
-			}
-
-			results := monitor.CheckTargets(ctx, &client, targets)
-
-			err = rdb.SaveMonitorResults(ctx, db, results)
-			if err != nil {
-				slog.LogAttrs(
-					ctx,
-					slog.LevelWarn,
-					"monitoring succeeded, but failed to save results",
+					"monitoring failed",
 					slog.String("error", err.Error()),
 				)
 				continue
 			}
 
-			err = hub.BroadcastMonitorResult(results)
-			if err != nil {
-				slog.LogAttrs(
-					ctx,
-					slog.LevelWarn,
-					"failed to broadcast monitor results",
-					slog.String("error", err.Error()),
-				)
-				continue
-			}
-
-			slog.LogAttrs(ctx, slog.LevelInfo, "monitoring was completed")
+			slog.LogAttrs(ctx, slog.LevelInfo, "monitoring succeeded")
 		}
 	}
 }

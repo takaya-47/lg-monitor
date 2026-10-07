@@ -3,6 +3,7 @@ package monitor
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -13,6 +14,7 @@ type Target struct {
 }
 
 type Result struct {
+	// TODO: Target構造体を全て持つのではなくidだけを参照するのがDDDらしいので修正したい
 	Target         Target
 	CheckedAt      time.Time
 	IsSuccess      bool
@@ -21,8 +23,29 @@ type Result struct {
 	ErrorMessage   string
 }
 
-// CheckTargets は監視対象全てに対して監視を実行します。
-func CheckTargets(ctx context.Context, client *http.Client, targets []Target) []Result {
+type TargetRepository interface {
+	FetchAll(ctx context.Context) ([]Target, error)
+}
+
+type ResultRepository interface {
+	Save(ctx context.Context, results []Result) error
+}
+
+type ResultPublisher interface {
+	Publish(results []Result) error
+}
+
+// Monitorは監視対象全てに対して監視を実行します。
+func Monitor(ctx context.Context, client *http.Client, targetRepository TargetRepository, resultRepository ResultRepository, hub ResultPublisher) error {
+	targets, err := targetRepository.FetchAll(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to fetch monitor targets: %w", err)
+	}
+	if len(targets) == 0 {
+		slog.LogAttrs(ctx, slog.LevelInfo, "no targets found, monitoring skipped")
+		return nil
+	}
+
 	// 監視対象1件の結果を格納するバッファ付きチャネル。
 	// バッファ付きチャネルを作成することで、複数のゴルーチンが結果を送信する際にブロックされるのを防げる。
 	ch := make(chan Result, len(targets))
@@ -40,7 +63,17 @@ func CheckTargets(ctx context.Context, client *http.Client, targets []Target) []
 		results = append(results, <-ch)
 	}
 
-	return results
+	err = resultRepository.Save(ctx, results)
+	if err != nil {
+		return fmt.Errorf("failed to save monitor results: %w", err)
+	}
+
+	err = hub.Publish(results)
+	if err != nil {
+		return fmt.Errorf("failed to broadcast monitor results: %w", err)
+	}
+
+	return nil
 }
 
 // check は監視対象にHTTPリクエストを送信し、結果を返却します。

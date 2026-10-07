@@ -60,8 +60,8 @@ func (h *Hub) unSubscribe(key chan event) {
 	delete(h.clients, key)
 }
 
-// BroadcastMonitorResult は監視結果を全てのクライアントに配信します。
-func (h *Hub) BroadcastMonitorResult(results []monitor.Result) error {
+// Publish は監視結果を全てのクライアントに配信します。
+func (h *Hub) Publish(results []monitor.Result) error {
 	for _, result := range results {
 		b, err := json.Marshal(monitorResultPayload{
 			MonitorTargetID: result.Target.ID,
@@ -75,7 +75,7 @@ func (h *Hub) BroadcastMonitorResult(results []monitor.Result) error {
 			return fmt.Errorf("failed to convert to JSON: %w", err)
 		}
 
-		h.publish(event{
+		h.broadcast(event{
 			Event: "monitoring completed",
 			Data:  string(b),
 		})
@@ -84,8 +84,8 @@ func (h *Hub) BroadcastMonitorResult(results []monitor.Result) error {
 	return nil
 }
 
-// publish は Hub に登録されている全てのクライアントにメッセージを送信します。
-func (h *Hub) publish(msg event) {
+// broadcast は Hub に登録されている全てのクライアントにメッセージを送信します。
+func (h *Hub) broadcast(msg event) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 

@@ -2,22 +2,21 @@ package rdb
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 
 	"github.com/takaya-47/lg-monitor/internal/monitor"
 )
 
-// FetchMonitorTargets は監視対象を取得します。
-func FetchMonitorTargets(ctx context.Context, db *sql.DB) ([]monitor.Target, error) {
+// FetchAll は全ての監視対象を取得します。
+func (s *Store) FetchAll(ctx context.Context) ([]monitor.Target, error) {
 	const query string = `
 		SELECT id, url
 	      FROM monitor_targets
 		 WHERE is_active = 1
 	`
-	rows, err := db.QueryContext(ctx, query)
+	rows, err := s.db.QueryContext(ctx, query)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch monitor targets: %w", err)
+		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
 	defer rows.Close()
 
