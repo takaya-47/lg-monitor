@@ -96,14 +96,6 @@ func exec(ctx context.Context, store *rdb.Store, cfg config) error {
 		}
 	}()
 
-	targetRepository, err := rdb.NewStore(ctx, cfg.DBDSN)
-	if err != nil {
-		return fmt.Errorf("failed to create target repository: %w", err)
-	}
-	resultRepository, err := rdb.NewStore(ctx, cfg.DBDSN)
-	if err != nil {
-		return fmt.Errorf("failed to create result repository: %w", err)
-	}
 	client := http.Client{
 		Timeout: 10 * time.Second,
 	}
@@ -136,7 +128,7 @@ func exec(ctx context.Context, store *rdb.Store, cfg config) error {
 		case <-ticker.C:
 			slog.LogAttrs(ctx, slog.LevelInfo, "monitoring started")
 
-			err := monitor.Monitor(ctx, &client, targetRepository, resultRepository, hub)
+			err := monitor.Monitor(ctx, &client, store, store, hub)
 			if err != nil {
 				slog.LogAttrs(
 					ctx,
