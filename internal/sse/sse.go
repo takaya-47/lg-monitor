@@ -125,8 +125,8 @@ func (h *Hub) NewSSEHandler() http.Handler {
 			select {
 			case <-r.Context().Done():
 				return
-			case event := <-ch:
-				writeData(w, event, flusher)
+			case e := <-ch:
+				writeData(w, e, flusher)
 			}
 		}
 	})
