@@ -35,3 +35,24 @@ func TestNewSSEHandler(t *testing.T) {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
+
+type ResponseWriterNotSupportFlusher struct {
+	http.ResponseWriter
+}
+
+func TestNewSSEHandlerFlusherNotSupported(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/sse", nil)
+	rec := httptest.NewRecorder()
+	h := sse.NewHub()
+
+	// Act
+	h.NewSSEHandler().ServeHTTP(ResponseWriterNotSupportFlusher{ResponseWriter: rec}, req)
+
+	// Assert
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("got %d, want %d", rec.Code, http.StatusInternalServerError)
+	}
+}
