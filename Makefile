@@ -1,8 +1,10 @@
 .PHONY: test test_race coverage coverage_measure coverage_html
 
+# テスト全体
 test:
 	go test -v ./...
 
+# 並行実行を含むコードをテストする際は、ここに追加しつつmake test_raceを実行する
 test_race:
 	go test -race -v ./internal/sse
 
