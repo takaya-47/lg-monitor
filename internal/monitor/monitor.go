@@ -13,15 +13,6 @@ type Target struct {
 	URL string
 }
 
-type Result struct {
-	TargetID       int
-	CheckedAt      time.Time
-	IsSuccess      bool
-	StatusCode     *int // レスポンスを受け取れない場合があるためポインタ型にしてnilを許容
-	ResponseTimeMs *int // レスポンスを受け取れない場合があるためポインタ型にしてnilを許容
-	ErrorMessage   string
-}
-
 type TargetRepository interface {
 	FetchAll(ctx context.Context) ([]Target, error)
 }
