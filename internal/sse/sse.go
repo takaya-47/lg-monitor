@@ -64,7 +64,7 @@ func (h *Hub) unSubscribe(key chan event) {
 func (h *Hub) Publish(results []monitor.Result) error {
 	for _, result := range results {
 		b, err := json.Marshal(monitorResultPayload{
-			MonitorTargetID: result.Target.ID,
+			MonitorTargetID: result.TargetID,
 			CheckedAt:       result.CheckedAt,
 			IsSuccess:       result.IsSuccess,
 			StatusCode:      result.StatusCode,

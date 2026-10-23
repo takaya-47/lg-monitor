@@ -14,8 +14,7 @@ type Target struct {
 }
 
 type Result struct {
-	// TODO: Target構造体を全て持つのではなくidだけを参照するのがDDDらしいので修正したい
-	Target         Target
+	TargetID       int
 	CheckedAt      time.Time
 	IsSuccess      bool
 	StatusCode     *int // レスポンスを受け取れない場合があるためポインタ型にしてnilを許容
@@ -79,7 +78,7 @@ func Monitor(ctx context.Context, client *http.Client, targetRepository TargetRe
 // check は監視対象にHTTPリクエストを送信し、結果を返却します。
 func check(ctx context.Context, client *http.Client, target Target) Result {
 	result := Result{
-		Target:    target,
+		TargetID:  target.ID,
 		CheckedAt: time.Now(),
 	}
 

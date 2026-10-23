@@ -19,7 +19,7 @@ func (s *Store) Save(ctx context.Context, results []monitor.Result) error {
 	values := make([]any, 0, len(results)*columns)
 	for _, r := range results {
 		placeholders = append(placeholders, "(?, ?, ?, ?, ?, ?)")
-		values = append(values, r.Target.ID, r.CheckedAt, r.IsSuccess, r.StatusCode, r.ResponseTimeMs, r.ErrorMessage)
+		values = append(values, r.TargetID, r.CheckedAt, r.IsSuccess, r.StatusCode, r.ResponseTimeMs, r.ErrorMessage)
 	}
 	query := fmt.Sprintf(
 		"INSERT INTO monitor_results (monitor_target_id, checked_at, is_success, status_code, response_time_ms, error_message) VALUES %s",

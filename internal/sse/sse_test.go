@@ -88,10 +88,7 @@ func TestNewSSEHandlerSendCompletedEvent(t *testing.T) {
 	responseTimeMs := 100
 	results := []monitor.Result{
 		{
-			Target: monitor.Target{
-				ID:  1,
-				URL: "http://example.com",
-			},
+			TargetID:       1,
 			CheckedAt:      time.Now(),
 			IsSuccess:      true,
 			StatusCode:     &statusOK,
@@ -121,7 +118,7 @@ func TestNewSSEHandlerSendCompletedEvent(t *testing.T) {
 			ResponseTimeMs  *int      `json:"response_time_ms"`
 			ErrorMessage    string    `json:"error_message"`
 		}{
-			MonitorTargetID: results[0].Target.ID,
+			MonitorTargetID: results[0].TargetID,
 			CheckedAt:       results[0].CheckedAt,
 			IsSuccess:       results[0].IsSuccess,
 			StatusCode:      results[0].StatusCode,
