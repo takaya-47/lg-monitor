@@ -1,5 +1,6 @@
 services:
   app:
+    container_name: app
     build:
       context: .docker/go
     volumes:
@@ -24,6 +25,7 @@ services:
       mysql:
         condition: service_healthy
   mysql:
+    container_name: mysql
     image: mysql:8.4
     ports:
       # ローカルマシンからクライアントツールで接続したいのでポートを公開する。
