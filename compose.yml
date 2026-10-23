@@ -30,6 +30,9 @@ services:
     volumes:
     # 設定ファイルのバインドマウント
       - "./.docker/mysql/my.cnf:/etc/mysql/conf.d/my.cnf"
+    # コンテナ内の/docker-entrypoint-initdb.dにファイルを置くと、コンテナ起動時に自動で実行されるため、バインドマウントする
+    # https://hub.docker.com/_/mysql#initializing-a-fresh-instance
+      - "./.docker/mysql/init:/docker-entrypoint-initdb.d"
     # データ永続化用のボリューム
       - mysql-data:/var/lib/mysql
     environment:
