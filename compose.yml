@@ -14,6 +14,7 @@ services:
       GOOSE_DRIVER: mysql
       # goose用DSN 「ユーザー名:パスワード@tcp(ホスト:ポート)/データベース名?parseTime=true」
       GOOSE_DBSTRING: "${DB_ROOT_USER}:${DB_ROOT_PASSWORD}@tcp(${DB_HOST}:${DB_PORT})/${DB_NAME}?parseTime=true"
+      GOOSE_TEST_DBSTRING: "${DB_ROOT_USER}:${DB_ROOT_PASSWORD}@tcp(${DB_HOST}:${DB_PORT})/${TEST_DB_NAME}?parseTime=true"
       GOOSE_MIGRATION_DIR: migrations
       # アプリケーション用DSN（gooseとは別に管理）
       DB_DSN: "${DB_ROOT_USER}:${DB_ROOT_PASSWORD}@tcp(${DB_HOST}:${DB_PORT})/${DB_NAME}?parseTime=true"
